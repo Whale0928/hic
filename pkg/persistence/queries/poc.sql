@@ -220,7 +220,7 @@ do update set
 	source_page = excluded.source_page,
 	raw_row = excluded.raw_row,
 	confidence = excluded.confidence,
-	qa_status = excluded.qa_status
+	qa_status = case when housing_units.qa_status = 'approved' then 'approved' else excluded.qa_status end
 returning id;
 
 -- name: CountStoredObjects :one
@@ -239,12 +239,24 @@ where qa_status = $1;
 -- name: PromoteHousingUnitsQA :exec
 update housing_units
 set qa_status = case
-	when notice_id is not null
+	when exists (
+			select 1
+			from source_notices sn
+			where sn.id = housing_units.notice_id
+				and sn.category = 'recruitment'
+		)
+		and notice_id is not null
 		and attachment_id is not null
 		and source_artifact_id is not null
-		and unit_no <> ''
+		and trim(unit_no) <> ''
+		and trim(address) <> ''
 		and exclusive_area_m2 is not null
-		and source_span <> ''
+		and exclusive_area_m2 > 0
+		and deposit_krw is not null
+		and deposit_krw >= 0
+		and monthly_rent_krw is not null
+		and monthly_rent_krw >= 0
+		and trim(source_span) <> ''
 	then 'approved'
 	else 'rejected'
 end
