@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hic/pkg/discovery"
+	"hic/pkg/extraction"
 	"hic/pkg/persistence"
 
 	"github.com/xuri/excelize/v2"
@@ -118,6 +119,27 @@ func TestFormatQASummary_승격결과를출력한다(t *testing.T) {
 
 	if got != "qa approved=25 rejected=2 pending=1\n" {
 		t.Fatalf("formatQASummary() = %q", got)
+	}
+}
+
+func TestNormalizeHousingUnitsFromArtifacts_PDF신청주택표를정규화한다(t *testing.T) {
+	units := normalizeHousingUnitsFromArtifacts(extraction.AttachmentKindNoticePDF, []extraction.ExtractedArtifact{{
+		Type:       extraction.ArtifactTypePDFText,
+		SourceSpan: "pdf://sample.pdf",
+		RawText: `
+신청 주택 주소 서울특별시 금천구 시흥대로 88 길 18
+공급호실 방 개수 면적 ( ㎡ ) 임대조건 ( 원 )
+계 전용 공용 보증금 임대료
+502 호 0 60.64 47.09 13.55 42,000,000 495,300
+입주가능일 2026.08.20.
+`,
+	}})
+
+	if len(units) != 1 {
+		t.Fatalf("normalizeHousingUnitsFromArtifacts() len = %d, want 1", len(units))
+	}
+	if units[0].UnitNo != "502호" {
+		t.Fatalf("UnitNo = %q", units[0].UnitNo)
 	}
 }
 

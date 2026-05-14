@@ -385,14 +385,12 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 						artifactIDsBySpan[artifact.SourceSpan] = artifactID
 						insertedArtifacts++
 					}
-					if attachment.Kind == extraction.AttachmentKindHousingUnitListXLSX {
-						for _, unit := range normalize.InferHousingUnitsFromXLSXRows(artifacts) {
-							artifactID := artifactIDsBySpan[unit.SourceSpan]
-							if _, err := repo.UpsertHousingUnit(cmd.Context(), attachment, artifactID, unit); err != nil {
-								return err
-							}
-							upsertedUnits++
+					for _, unit := range normalizeHousingUnitsFromArtifacts(attachment.Kind, artifacts) {
+						artifactID := artifactIDsBySpan[unit.SourceSpan]
+						if _, err := repo.UpsertHousingUnit(cmd.Context(), attachment, artifactID, unit); err != nil {
+							return err
 						}
+						upsertedUnits++
 					}
 				}
 			}
@@ -432,6 +430,21 @@ func splitCSV(raw string) []string {
 		}
 	}
 	return out
+}
+
+func normalizeHousingUnitsFromArtifacts(kind extraction.AttachmentKind, artifacts []extraction.ExtractedArtifact) []normalize.HousingUnitCandidate {
+	switch kind {
+	case extraction.AttachmentKindHousingUnitListXLSX:
+		return normalize.InferHousingUnitsFromXLSXRows(artifacts)
+	case extraction.AttachmentKindNoticePDF:
+		units := make([]normalize.HousingUnitCandidate, 0)
+		for _, artifact := range artifacts {
+			units = append(units, normalize.InferHousingUnitsFromPDFText(artifact)...)
+		}
+		return units
+	default:
+		return nil
+	}
 }
 
 func extractPreservedAttachment(objectStore extraction.LocalObjectStore, attachment persistence.PersistedAttachment) ([]extraction.ExtractedArtifact, error) {
