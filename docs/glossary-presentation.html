@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>집 모아 용어 체계</title>
+  <style>
+    :root {
+      --bg: #f5f7f8;
+      --paper: #fff;
+      --ink: #141a1f;
+      --muted: #667085;
+      --line: #d9dee7;
+      --green: #0f766e;
+      --green-bg: #e8f6f3;
+      --blue: #1d4ed8;
+      --blue-bg: #eff6ff;
+      --amber: #b45309;
+      --amber-bg: #fff7ed;
+      --red: #b42318;
+      --red-bg: #fff1f0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1280px, calc(100vw - 40px));
+      margin: 28px auto 56px;
+    }
+
+    section {
+      min-height: calc(100vh - 56px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 32px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: clamp(36px, 6vw, 76px);
+      line-height: 1.02;
+      letter-spacing: 0;
+      max-width: 980px;
+    }
+
+    h2 {
+      font-size: clamp(28px, 4vw, 48px);
+      line-height: 1.08;
+      margin-bottom: 18px;
+      max-width: 900px;
+    }
+
+    .lead {
+      margin-top: 18px;
+      font-size: 20px;
+      color: var(--muted);
+      max-width: 840px;
+    }
+
+    .eyebrow {
+      color: var(--green);
+      font-weight: 760;
+      margin-bottom: 14px;
+      letter-spacing: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-height: 148px;
+    }
+
+    .card strong {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .card span {
+      display: inline-block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      color: #344054;
+      font-size: 15px;
+    }
+
+    .card.green { background: var(--green-bg); border-color: #b7e4dc; }
+    .card.blue { background: var(--blue-bg); border-color: #bfdbfe; }
+    .card.amber { background: var(--amber-bg); border-color: #fed7aa; }
+    .card.red { background: var(--red-bg); border-color: #fecdca; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 30px;
+      align-items: stretch;
+    }
+
+    .step {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      position: relative;
+    }
+
+    .step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      right: -10px;
+      top: 50%;
+      width: 18px;
+      height: 2px;
+      background: var(--line);
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+
+    .step p {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 24px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 12px 14px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    th {
+      background: #eef2f6;
+      font-size: 13px;
+      color: #344054;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    th:last-child, td:last-child { border-right: none; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #f2f4f7;
+      border: 1px solid #e4e7ec;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-size: 12px;
+    }
+
+    .quote {
+      background: var(--paper);
+      border-left: 5px solid var(--green);
+      padding: 20px 22px;
+      font-size: 24px;
+      max-width: 900px;
+      margin-top: 28px;
+    }
+
+    @media (max-width: 960px) {
+      section { min-height: auto; }
+      .grid, .grid.two, .flow { grid-template-columns: 1fr; }
+      .step:not(:last-child)::after { display: none; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <p class="eyebrow">House Information Collector Terminology</p>
+      <h1>집 모아의 용어를 먼저 고정합니다.</h1>
+      <p class="lead">DB, 패키지, Cobra 커맨드, API 응답이 같은 언어를 쓰도록 한글명, 영어명, 변수명, 설명을 하나의 사전으로 관리합니다.</p>
+      <div class="quote">핵심 정의: 건물 안의 각 호실 하나를 HIC에서는 “주택”으로 표현합니다.</div>
+    </section>
+
+    <section>
+      <p class="eyebrow">Core Domain</p>
+      <h2>건물, 호실, 주택을 분리합니다.</h2>
+      <div class="grid">
+        <div class="card blue">
+          <strong>건물</strong>
+          <span>Building / <code>building</code></span>
+          <p>물리적인 건축물 또는 동입니다. 하나의 건물 안에 여러 주택이 들어갈 수 있습니다.</p>
+        </div>
+        <div class="card green">
+          <strong>주택</strong>
+          <span>Housing Unit / <code>housing_unit</code></span>
+          <p>서비스의 핵심 개별 정보 단위입니다. 건물 안의 각 호실 하나를 주택으로 표현합니다.</p>
+        </div>
+        <div class="card amber">
+          <strong>호실</strong>
+          <span>Unit Number / <code>unit_no</code></span>
+          <p>주택을 식별하는 번호입니다. 예: 0404, 0201, 1007.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="eyebrow">Recruitment Scope</p>
+      <h2>수집 대상은 모집공고 계열만입니다.</h2>
+      <div class="grid two">
+        <div class="card green">
+          <strong>포함</strong>
+          <span>Recruitment Family</span>
+          <p>모집공고, 정정공고, 추가모집, 잔여세대 모집은 모두 모집공고 계열로 포함합니다.</p>
+        </div>
+        <div class="card red">
+          <strong>제외</strong>
+          <span>Non-Recruitment Post</span>
+          <p>당첨자 발표, 계약안내, 시스템 공지, 일반 알림은 아예 수집하지 않습니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="eyebrow">Workflow Terms</p>
+      <h2>각 레이어는 서로 다른 산출물을 만듭니다.</h2>
+      <div class="flow">
+        <div class="step">
+          <strong>Discovery</strong>
+          <p>모집공고와 첨부 메타를 발견합니다.</p>
+        </div>
+        <div class="step">
+          <strong>Extraction</strong>
+          <p>PDF/XLSX/HWP/HTML에서 텍스트와 행을 추출합니다.</p>
+        </div>
+        <div class="step">
+          <strong>Normalize</strong>
+          <p>주소, 주택, 가격, 일정, 상호전환을 필드화합니다.</p>
+        </div>
+        <div class="step">
+          <strong>LLM Assist</strong>
+          <p>낮은 confidence 구간만 보정합니다.</p>
+        </div>
+        <div class="step">
+          <strong>QA Gate</strong>
+          <p>필수 필드가 채워진 데이터만 서비스로 승격합니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="eyebrow">Normalized Fields</p>
+      <h2>Raw에 묻히면 안 되는 필드입니다.</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>한글</th>
+            <th>영어</th>
+            <th>축약어/변수명</th>
+            <th>설명</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>주소</td>
+            <td>Address</td>
+            <td><code>address</code></td>
+            <td>주택의 전체 소재지 주소. 필수 정규화 필드입니다.</td>
+          </tr>
+          <tr>
+            <td>자치구</td>
+            <td>District</td>
+            <td><code>district</code></td>
+            <td>서울시 구 단위 행정구역. 예: 영등포구.</td>
+          </tr>
+          <tr>
+            <td>주택구조</td>
+            <td>Structure Type</td>
+            <td><code>structure_type</code></td>
+            <td>개방형원룸, 분리형원룸 등 구조 유형.</td>
+          </tr>
+          <tr>
+            <td>엘리베이터 설치 여부</td>
+            <td>Elevator Installed</td>
+            <td><code>elevator_installed</code></td>
+            <td>설치/미설치를 boolean으로 정규화합니다.</td>
+          </tr>
+          <tr>
+            <td>임대보증금</td>
+            <td>Deposit</td>
+            <td><code>deposit_krw</code></td>
+            <td>원 단위 숫자 필드로 저장합니다.</td>
+          </tr>
+          <tr>
+            <td>월임대료</td>
+            <td>Monthly Rent</td>
+            <td><code>monthly_rent_krw</code></td>
+            <td>원 단위 숫자 필드로 저장합니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <p class="eyebrow">Rent Conversion</p>
+      <h2>상호전환은 규칙과 계산값을 분리합니다.</h2>
+      <div class="grid two">
+        <div class="card blue">
+          <strong>전환 규칙</strong>
+          <span>Rent Conversion Rule</span>
+          <p>최대 전환비율, 연 전환요율, 10,000원당 추가보증금, 전환 가능 여부를 공고 단위로 저장합니다.</p>
+        </div>
+        <div class="card green">
+          <strong>주택별 계산값</strong>
+          <span>Unit Rent Conversion Value</span>
+          <p>각 주택의 월임대료를 기준으로 최대 전환 가능 월임대료, 예상 추가보증금, 전환 후 최저 월임대료를 계산합니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="eyebrow">Source Trace</p>
+      <h2>정규화 값은 근거 위치를 가져야 합니다.</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>한글</th>
+            <th>영어</th>
+            <th>축약어/변수명</th>
+            <th>설명</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>원본 위치</td>
+            <td>Source Span</td>
+            <td><code>source_span</code></td>
+            <td>PDF 페이지, XLSX sheet/row/cell, HTML selector 등 필드의 근거 위치입니다.</td>
+          </tr>
+          <tr>
+            <td>소스 행</td>
+            <td>Source Row</td>
+            <td><code>source_row</code></td>
+            <td>XLSX 원본 행 JSON. 조회 기준이 아니라 감사/재처리용 보조 증거입니다.</td>
+          </tr>
+          <tr>
+            <td>신뢰도</td>
+            <td>Confidence</td>
+            <td><code>confidence</code></td>
+            <td>필드 추출/정규화 결과의 신뢰도입니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <p class="eyebrow">Decision</p>
+      <h2>이제 코드와 DB는 이 용어를 따라가야 합니다.</h2>
+      <p class="lead">다음 설계 문서와 schema.sql은 이 사전을 기준으로 작성합니다. 용어가 흔들리면 레이어 경계와 쿼리 의미도 같이 흔들립니다.</p>
+    </section>
+  </main>
+</body>
+</html>

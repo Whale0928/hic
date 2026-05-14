@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1520" viewBox="0 0 1400 1520" role="img" aria-labelledby="title desc">
+  <title id="title">House Information Collector Layer Architecture</title>
+  <desc id="desc">외부 인프라, 내부 인프라, 애플리케이션 워크플로우 경계를 분리한 순차 레이어 구성도</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f8fb; }
+      .boundary { fill: #ffffff; stroke: #2f3a4a; stroke-width: 2; stroke-dasharray: 9 7; }
+      .section-title { font: 700 23px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #172033; }
+      .title { font: 800 34px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #111827; }
+      .subtitle { font: 500 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #5d6678; }
+      .box-title { font: 700 18px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #111827; }
+      .box-text { font: 500 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #4b5563; }
+      .note { font: 600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #516071; }
+      .box { fill: #ffffff; stroke: #a9b4c4; stroke-width: 1.6; rx: 8; }
+      .external { fill: #fff7ed; stroke: #e79b43; }
+      .internal { fill: #eff6ff; stroke: #5b8def; }
+      .workflow { fill: #f0fdf4; stroke: #51a96a; }
+      .qa { fill: #f8fafc; stroke: #64748b; }
+      .reject { fill: #fff1f2; stroke: #e45c74; }
+      .promotion { fill: #eef2ff; stroke: #7c82d8; }
+      .line { stroke: #334155; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .reject-line { stroke: #be123c; stroke-width: 2; fill: none; marker-end: url(#arrowReject); }
+      .boundary-line { stroke: #2f3a4a; stroke-width: 2; stroke-dasharray: 6 6; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <marker id="arrowReject" markerWidth="12" markerHeight="12" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#be123c" />
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="1520" />
+  <text class="title" x="60" y="54">집 모아 / House Information Collector</text>
+  <text class="subtitle" x="60" y="82">모집공고 전용 수집, 원본 보존, 정규화, 검증 승격 흐름</text>
+
+  <rect class="boundary" x="40" y="105" width="1320" height="175" rx="14" />
+  <text class="section-title" x="70" y="142">외부 인프라 경계</text>
+  <text class="note" x="70" y="166">기관 사이트와 선택형 외부 서비스. 핵심 도메인은 직접 의존하지 않는다.</text>
+
+  <rect class="box external" x="80" y="190" width="270" height="58" />
+  <text class="box-title" x="104" y="215">SH / LH Sites</text>
+  <text class="box-text" x="104" y="235">HTML, PDF, XLSX, HWP</text>
+
+  <rect class="box external" x="390" y="190" width="270" height="58" />
+  <text class="box-title" x="414" y="215">LLM API</text>
+  <text class="box-text" x="414" y="235">선택 보정, schema 검증 필수</text>
+
+  <rect class="box external" x="700" y="190" width="270" height="58" />
+  <text class="box-title" x="724" y="215">MinIO</text>
+  <text class="box-text" x="724" y="235">선택 S3 object adapter</text>
+
+  <rect class="box external" x="1010" y="190" width="270" height="58" />
+  <text class="box-title" x="1034" y="215">Redis</text>
+  <text class="box-text" x="1034" y="235">선택 queue / lock adapter</text>
+
+  <line class="boundary-line" x1="40" y1="305" x2="1360" y2="305" />
+  <text class="note" x="590" y="297">외부 구현과 내부 포트의 경계선</text>
+
+  <rect class="boundary" x="40" y="330" width="1320" height="215" rx="14" />
+  <text class="section-title" x="70" y="368">내부 인프라 경계</text>
+  <text class="note" x="70" y="392">필수 저장소와 포트/어댑터. Redis와 MinIO는 여기서도 선택 구현으로만 연결된다.</text>
+
+  <rect class="box internal" x="80" y="425" width="270" height="78" />
+  <text class="box-title" x="104" y="454">PostgreSQL</text>
+  <text class="box-text" x="104" y="475">필수 정규화 저장소</text>
+  <text class="box-text" x="104" y="492">schema/schema.sql</text>
+
+  <rect class="box internal" x="390" y="425" width="270" height="78" />
+  <text class="box-title" x="414" y="454">ObjectStore Port</text>
+  <text class="box-text" x="414" y="475">기본: local filesystem</text>
+  <text class="box-text" x="414" y="492">확장: MinIO adapter</text>
+
+  <rect class="box internal" x="700" y="425" width="270" height="78" />
+  <text class="box-title" x="724" y="454">Queue / Lock Port</text>
+  <text class="box-text" x="724" y="475">기본: in-process fallback</text>
+  <text class="box-text" x="724" y="492">확장: Redis adapter</text>
+
+  <rect class="box internal" x="1010" y="425" width="270" height="78" />
+  <text class="box-title" x="1034" y="454">Global Config</text>
+  <text class="box-text" x="1034" y="475">logger, clock, retry</text>
+  <text class="box-text" x="1034" y="492">site registry, policy</text>
+
+  <rect class="boundary" x="40" y="575" width="1320" height="920" rx="14" />
+  <text class="section-title" x="70" y="613">애플리케이션 워크플로우 경계</text>
+  <text class="note" x="70" y="637">각 단계는 다음 단계로 넘기기 전에 QA gate를 통과한다. 실패 데이터는 serving으로 승격하지 않는다.</text>
+
+  <rect class="box workflow" x="420" y="670" width="560" height="60" />
+  <text class="box-title" x="452" y="696">1. Discovery</text>
+  <text class="box-text" x="452" y="716">게시판 탐색, 모집공고 계열 판정, 첨부 메타 발견</text>
+
+  <path class="line" d="M700 730 L700 760" />
+  <rect class="box qa" x="420" y="765" width="560" height="60" />
+  <text class="box-title" x="452" y="791">2. Discovery QA</text>
+  <text class="box-text" x="452" y="811">비모집 게시글 차단, 중복 후보 검사, run report 기록</text>
+  <path class="reject-line" d="M980 795 L1055 795" />
+  <rect class="box reject" x="1060" y="765" width="240" height="60" />
+  <text class="box-title" x="1084" y="791">Rejected</text>
+  <text class="box-text" x="1084" y="811">DB 저장 없음</text>
+
+  <path class="line" d="M700 825 L700 855" />
+  <rect class="box workflow" x="420" y="860" width="560" height="60" />
+  <text class="box-title" x="452" y="886">3. Extraction</text>
+  <text class="box-text" x="452" y="906">원본 보존, PDF/XLSX/HWP/HTML 기계 추출</text>
+
+  <path class="line" d="M700 920 L700 950" />
+  <rect class="box qa" x="420" y="955" width="560" height="60" />
+  <text class="box-title" x="452" y="981">4. Extraction QA</text>
+  <text class="box-text" x="452" y="1001">object key, sha256, content type, extractor status 검증</text>
+  <path class="reject-line" d="M980 985 L1055 985" />
+  <rect class="box reject" x="1060" y="955" width="240" height="60" />
+  <text class="box-title" x="1084" y="981">Quarantine</text>
+  <text class="box-text" x="1084" y="1001">attachment 단위 격리</text>
+
+  <path class="line" d="M700 1015 L700 1045" />
+  <rect class="box workflow" x="420" y="1050" width="560" height="60" />
+  <text class="box-title" x="452" y="1076">5. Normalize</text>
+  <text class="box-text" x="452" y="1096">주소, 호실, 면적, 가격, 상호전환, 공급일정 정규화</text>
+
+  <path class="line" d="M700 1110 L700 1140" />
+  <rect class="box qa" x="420" y="1145" width="560" height="60" />
+  <text class="box-title" x="452" y="1171">6. Normalize QA</text>
+  <text class="box-text" x="452" y="1191">필수 필드, source span, 계산값, 중복 검증</text>
+  <path class="reject-line" d="M980 1175 L1055 1175" />
+  <rect class="box reject" x="1060" y="1145" width="240" height="60" />
+  <text class="box-title" x="1084" y="1171">Repair Needed</text>
+  <text class="box-text" x="1084" y="1191">LLM 후보 또는 수동 샘플</text>
+
+  <path class="line" d="M700 1205 L700 1235" />
+  <rect class="box workflow" x="420" y="1240" width="560" height="60" />
+  <text class="box-title" x="452" y="1266">7. LLM Assist Optional</text>
+  <text class="box-text" x="452" y="1286">낮은 confidence 구간만 보정, prompt/schema/input hash 저장</text>
+
+  <path class="line" d="M700 1300 L700 1330" />
+  <rect class="box qa" x="420" y="1335" width="560" height="60" />
+  <text class="box-title" x="452" y="1361">8. LLM QA</text>
+  <text class="box-text" x="452" y="1381">JSON schema, source span, deterministic 충돌 검사</text>
+
+  <path class="line" d="M700 1395 L700 1425" />
+  <rect class="box promotion" x="420" y="1430" width="560" height="60" />
+  <text class="box-title" x="452" y="1456">9. Serving Promotion / API</text>
+  <text class="box-text" x="452" y="1476">검증 통과 정규화 데이터만 조회 모델로 승격</text>
+</svg>

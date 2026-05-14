@@ -1,0 +1,6 @@
+.cache/
+.data/
+.playwright-mcp/
+.env
+dist/
+/.idea/
