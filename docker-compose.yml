@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: shdata-postgres
+    environment:
+      POSTGRES_DB: shdata
+      POSTGRES_USER: shdata
+      POSTGRES_PASSWORD: shdata
+    ports:
+      - "9551:5432"
+    volumes:
+      - shdata-postgres:/var/lib/postgresql/data
+
+volumes:
+  shdata-postgres:
