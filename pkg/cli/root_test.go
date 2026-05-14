@@ -156,3 +156,40 @@ func TestWriteDiscoveryReport_첨부상세옵션이면파일명을출력한다(t
 		t.Fatalf("output missing attachment detail:\n%s", got)
 	}
 }
+
+func TestCollectionRunStats_수집통계를구성한다(t *testing.T) {
+	report := discovery.Report{
+		Pages:           5,
+		ListRows:        50,
+		Details:         44,
+		SkippedOld:      6,
+		SkippedKnown:    3,
+		StoppedByCutoff: true,
+		Candidates:      make([]discovery.Candidate, 14),
+		Rejected:        make([]discovery.RejectedPost, 30),
+	}
+
+	stats := collectionRunStats(report, 7, 31, 25, 7, 31, 25)
+
+	tests := map[string]any{
+		"pages":              5,
+		"list_rows":          50,
+		"details":            44,
+		"candidates":         14,
+		"rejected":           30,
+		"skipped_old":        6,
+		"skipped_known":      3,
+		"stopped_by_cutoff":  true,
+		"downloaded":         7,
+		"inserted_artifacts": 31,
+		"upserted_units":     25,
+		"stored_objects":     int64(7),
+		"total_artifacts":    int64(31),
+		"total_units":        int64(25),
+	}
+	for key, want := range tests {
+		if got := stats[key]; got != want {
+			t.Fatalf("stats[%s] = %#v, want %#v", key, got, want)
+		}
+	}
+}

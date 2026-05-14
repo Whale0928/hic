@@ -12,6 +12,8 @@ type Querier interface {
 	CountExtractedArtifacts(ctx context.Context) (int64, error)
 	CountHousingUnits(ctx context.Context) (int64, error)
 	CountStoredObjects(ctx context.Context) (int64, error)
+	CreateCollectionRun(ctx context.Context, source string) (int64, error)
+	FinishCollectionRun(ctx context.Context, arg FinishCollectionRunParams) error
 	InsertExtractedArtifact(ctx context.Context, arg InsertExtractedArtifactParams) (int64, error)
 	ListExistingNoticeSeqs(ctx context.Context, arg ListExistingNoticeSeqsParams) ([]string, error)
 	ListHousingUnits(ctx context.Context, limit int32) ([]ListHousingUnitsRow, error)

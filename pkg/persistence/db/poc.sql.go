@@ -44,6 +44,46 @@ func (q *Queries) CountStoredObjects(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const createCollectionRun = `-- name: CreateCollectionRun :one
+insert into collection_runs (source, status, stats)
+values ($1, 'running', '{}'::jsonb)
+returning id
+`
+
+func (q *Queries) CreateCollectionRun(ctx context.Context, source string) (int64, error) {
+	row := q.db.QueryRow(ctx, createCollectionRun, source)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const finishCollectionRun = `-- name: FinishCollectionRun :exec
+update collection_runs
+set
+	status = $2,
+	finished_at = now(),
+	stats = $3,
+	error_text = $4
+where id = $1
+`
+
+type FinishCollectionRunParams struct {
+	ID        int64       `json:"id"`
+	Status    string      `json:"status"`
+	Stats     []byte      `json:"stats"`
+	ErrorText pgtype.Text `json:"error_text"`
+}
+
+func (q *Queries) FinishCollectionRun(ctx context.Context, arg FinishCollectionRunParams) error {
+	_, err := q.db.Exec(ctx, finishCollectionRun,
+		arg.ID,
+		arg.Status,
+		arg.Stats,
+		arg.ErrorText,
+	)
+	return err
+}
+
 const insertExtractedArtifact = `-- name: InsertExtractedArtifact :one
 insert into extracted_artifacts (
 	attachment_id,

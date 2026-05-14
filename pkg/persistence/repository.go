@@ -67,6 +67,13 @@ type SourceNoticeView struct {
 	SourceURL  string `json:"source_url"`
 }
 
+type CollectionRunStatus string
+
+const (
+	CollectionRunStatusSucceeded CollectionRunStatus = "succeeded"
+	CollectionRunStatusFailed    CollectionRunStatus = "failed"
+)
+
 func Open(ctx context.Context, databaseURL string) (*Repository, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -83,7 +90,38 @@ func (r *Repository) Close() {
 	r.pool.Close()
 }
 
+func (r *Repository) CreateCollectionRun(ctx context.Context, source string) (int64, error) {
+	return r.queries.CreateCollectionRun(ctx, source)
+}
+
+func (r *Repository) FinishCollectionRun(ctx context.Context, runID int64, status CollectionRunStatus, stats map[string]any, errorText string) error {
+	return r.queries.FinishCollectionRun(ctx, db.FinishCollectionRunParams{
+		ID:        runID,
+		Status:    string(status),
+		Stats:     mustJSONAny(stats),
+		ErrorText: stringValue(errorText),
+	})
+}
+
+func ValidatePersistableCandidate(candidate discovery.Candidate) error {
+	category := discovery.ClassifyNotice(candidate.Title, "")
+	if category != discovery.NoticeCategoryRecruitment {
+		return fmt.Errorf("non-recruitment notice must not be persisted: agency=%s board=%s seq=%s category=%s title=%q",
+			candidate.Agency,
+			candidate.BoardKind,
+			candidate.Seq,
+			category,
+			candidate.Title,
+		)
+	}
+	return nil
+}
+
 func (r *Repository) SaveCandidatePreservation(ctx context.Context, board discovery.Board, candidate discovery.Candidate, report workflow.PreserveReport) ([]PersistedAttachment, error) {
+	if err := ValidatePersistableCandidate(candidate); err != nil {
+		return nil, err
+	}
+
 	boardID, err := r.queries.UpsertSourceBoard(ctx, db.UpsertSourceBoardParams{
 		Agency:    board.Agency,
 		BoardKind: board.BoardKind,
@@ -419,6 +457,13 @@ func mustJSONAny(value map[string]any) []byte {
 		return []byte("{}")
 	}
 	return out
+}
+
+func stringValue(value string) pgtype.Text {
+	if strings.TrimSpace(value) == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: value, Valid: true}
 }
 
 func firstNonEmpty(values ...string) string {

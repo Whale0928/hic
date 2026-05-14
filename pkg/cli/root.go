@@ -141,6 +141,25 @@ func cutoffDate(maxAgeDays int) time.Time {
 	return time.Now().AddDate(0, 0, -maxAgeDays)
 }
 
+func collectionRunStats(report discovery.Report, downloaded int, insertedArtifacts int, upsertedUnits int, storedObjects int64, totalArtifacts int64, totalUnits int64) map[string]any {
+	return map[string]any{
+		"pages":              report.Pages,
+		"list_rows":          report.ListRows,
+		"details":            report.Details,
+		"candidates":         len(report.Candidates),
+		"rejected":           len(report.Rejected),
+		"skipped_old":        report.SkippedOld,
+		"skipped_known":      report.SkippedKnown,
+		"stopped_by_cutoff":  report.StoppedByCutoff,
+		"downloaded":         downloaded,
+		"inserted_artifacts": insertedArtifacts,
+		"upserted_units":     upsertedUnits,
+		"stored_objects":     storedObjects,
+		"total_artifacts":    totalArtifacts,
+		"total_units":        totalUnits,
+	}
+}
+
 func writeDiscoveryReport(w io.Writer, report discovery.Report, showAttachments bool) {
 	fmt.Fprintln(w, report.String())
 	for _, candidate := range report.Candidates {
@@ -273,7 +292,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "collect-sh",
 		Short: "Run the SH collection workflow",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			registry := discovery.NewStaticSiteRegistry()
 			board, ok := registry.Get("SH", boardKind)
 			if !ok {
@@ -288,6 +307,33 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			}
 			defer repo.Close()
 
+			var report discovery.Report
+			var runID int64
+			var downloaded int
+			var insertedArtifacts int
+			var upsertedUnits int
+			var storedObjects int64
+			var totalArtifacts int64
+			var totalUnits int64
+			if !dryRun && preserveAttachments {
+				runID, err = repo.CreateCollectionRun(cmd.Context(), strings.ToLower(board.Agency)+":"+board.BoardKind)
+				if err != nil {
+					return err
+				}
+				defer func() {
+					status := persistence.CollectionRunStatusSucceeded
+					errorText := ""
+					if err != nil {
+						status = persistence.CollectionRunStatusFailed
+						errorText = err.Error()
+					}
+					finishErr := repo.FinishCollectionRun(cmd.Context(), runID, status, collectionRunStats(report, downloaded, insertedArtifacts, upsertedUnits, storedObjects, totalArtifacts, totalUnits), errorText)
+					if err == nil && finishErr != nil {
+						err = finishErr
+					}
+				}()
+			}
+
 			var knownSeqs map[string]bool
 			if skipExisting && strings.TrimSpace(seqs) == "" {
 				knownSeqs, err = repo.ExistingNoticeSeqs(cmd.Context(), board.Agency, board.BoardKind)
@@ -295,7 +341,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 					return err
 				}
 			}
-			report, err := discovery.NewDiscoverer(discovery.NewHTTPFetcher()).Discover(cmd.Context(), board, discovery.Options{
+			report, err = discovery.NewDiscoverer(discovery.NewHTTPFetcher()).Discover(cmd.Context(), board, discovery.Options{
 				Pages:      pages,
 				Seqs:       splitCSV(seqs),
 				CutoffDate: cutoffDate(maxAgeDays),
@@ -311,13 +357,12 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 
 			objectStore := extraction.NewLocalObjectStore(objectRoot)
 			collector := workflow.NewCollector(workflow.NewSHAttachmentFetcher(), objectStore)
-			insertedArtifacts := 0
-			upsertedUnits := 0
 			for _, candidate := range report.Candidates {
 				preserveReport, err := collector.PreserveCandidateAttachments(cmd.Context(), board, candidate)
 				if err != nil {
 					return err
 				}
+				downloaded += preserveReport.Downloaded
 				persisted, err := repo.SaveCandidatePreservation(cmd.Context(), board, candidate, preserveReport)
 				if err != nil {
 					return err
@@ -351,15 +396,15 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 					}
 				}
 			}
-			storedObjects, artifacts, err := repo.Counts(cmd.Context())
+			storedObjects, totalArtifacts, err = repo.Counts(cmd.Context())
 			if err != nil {
 				return err
 			}
-			units, err := repo.CountHousingUnits(cmd.Context())
+			totalUnits, err = repo.CountHousingUnits(cmd.Context())
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "db stored_objects=%d extracted_artifacts=%d housing_units=%d inserted_artifacts=%d upserted_units=%d\n", storedObjects, artifacts, units, insertedArtifacts, upsertedUnits)
+			fmt.Fprintf(cmd.OutOrStdout(), "db stored_objects=%d extracted_artifacts=%d housing_units=%d inserted_artifacts=%d upserted_units=%d\n", storedObjects, totalArtifacts, totalUnits, insertedArtifacts, upsertedUnits)
 			return nil
 		},
 	}

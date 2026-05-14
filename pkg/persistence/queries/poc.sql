@@ -1,3 +1,17 @@
+-- name: CreateCollectionRun :one
+insert into collection_runs (source, status, stats)
+values ($1, 'running', '{}'::jsonb)
+returning id;
+
+-- name: FinishCollectionRun :exec
+update collection_runs
+set
+	status = $2,
+	finished_at = now(),
+	stats = $3,
+	error_text = $4
+where id = $1;
+
 -- name: UpsertSourceBoard :one
 insert into source_boards (agency, board_kind, name, source_url)
 values ($1, $2, $3, $4)
