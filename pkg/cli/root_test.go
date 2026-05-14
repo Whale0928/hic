@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hic/pkg/discovery"
+	"hic/pkg/persistence"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -61,6 +62,7 @@ func TestNewRootCommand_도메인서브커맨드Help가동작한다(t *testing.T
 		{"workflow", "--help"},
 		{"workflow", "collect-sh", "--help"},
 		{"qa", "--help"},
+		{"qa", "promote-units", "--help"},
 	}
 
 	for _, args := range tests {
@@ -93,6 +95,29 @@ func TestNewRootCommand_Serve기본포트는9552다(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), ":9552") {
 		t.Fatalf("serve help = %q, want default :9552", out.String())
+	}
+}
+
+func TestNewRootCommand_QAHelp가승격명령을노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"qa", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "promote-units") {
+		t.Fatalf("qa help = %q, want promote-units", out.String())
+	}
+}
+
+func TestFormatQASummary_승격결과를출력한다(t *testing.T) {
+	got := formatQASummary(persistence.QASummary{Approved: 25, Rejected: 2, Pending: 1})
+
+	if got != "qa approved=25 rejected=2 pending=1\n" {
+		t.Fatalf("formatQASummary() = %q", got)
 	}
 }
 

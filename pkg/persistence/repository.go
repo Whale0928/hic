@@ -67,6 +67,12 @@ type SourceNoticeView struct {
 	SourceURL  string `json:"source_url"`
 }
 
+type QASummary struct {
+	Approved int64
+	Rejected int64
+	Pending  int64
+}
+
 type CollectionRunStatus string
 
 const (
@@ -300,11 +306,40 @@ func (r *Repository) ExistingNoticeSeqs(ctx context.Context, agency string, boar
 	return known, nil
 }
 
-func (r *Repository) ListHousingUnits(ctx context.Context, limit int32) ([]HousingUnitView, error) {
+func (r *Repository) PromoteHousingUnitsQA(ctx context.Context) (QASummary, error) {
+	if err := r.queries.PromoteHousingUnitsQA(ctx); err != nil {
+		return QASummary{}, err
+	}
+	return r.HousingUnitsQASummary(ctx)
+}
+
+func (r *Repository) HousingUnitsQASummary(ctx context.Context) (QASummary, error) {
+	approved, err := r.queries.CountHousingUnitsByQAStatus(ctx, "approved")
+	if err != nil {
+		return QASummary{}, err
+	}
+	rejected, err := r.queries.CountHousingUnitsByQAStatus(ctx, "rejected")
+	if err != nil {
+		return QASummary{}, err
+	}
+	pending, err := r.queries.CountHousingUnitsByQAStatus(ctx, "pending")
+	if err != nil {
+		return QASummary{}, err
+	}
+	return QASummary{Approved: approved, Rejected: rejected, Pending: pending}, nil
+}
+
+func (r *Repository) ListHousingUnits(ctx context.Context, limit int32, qaStatus string) ([]HousingUnitView, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
-	rows, err := r.queries.ListHousingUnits(ctx, limit)
+	if strings.TrimSpace(qaStatus) == "" {
+		qaStatus = "approved"
+	}
+	rows, err := r.queries.ListHousingUnits(ctx, db.ListHousingUnitsParams{
+		Limit:    limit,
+		QaStatus: qaStatus,
+	})
 	if err != nil {
 		return nil, err
 	}

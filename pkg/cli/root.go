@@ -34,7 +34,7 @@ func NewRootCommand(ctx context.Context) *cobra.Command {
 		newNormalizeCommand(),
 		newLLMCommand(),
 		newWorkflowCommand(),
-		newQACommand(),
+		newQACommand(ctx, cfg),
 	)
 
 	return root
@@ -453,13 +453,46 @@ func extractPreservedAttachment(objectStore extraction.LocalObjectStore, attachm
 	}
 }
 
-func newQACommand() *cobra.Command {
+func newQACommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "qa",
 		Short: "Run quality gates and sample regression checks",
 	}
-	cmd.AddCommand(placeholderCommand("sample", "Run a sample QA case"))
+	cmd.AddCommand(
+		placeholderCommand("sample", "Run a sample QA case"),
+		newQAPromoteUnitsCommand(ctx, cfg),
+	)
 	return cmd
+}
+
+func newQAPromoteUnitsCommand(ctx context.Context, cfg global.Config) *cobra.Command {
+	return &cobra.Command{
+		Use:   "promote-units",
+		Short: "Promote pending housing units that pass QA",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo, err := persistence.Open(ctx, cfg.DatabaseURL)
+			if err != nil {
+				return err
+			}
+			defer repo.Close()
+
+			summary, err := repo.PromoteHousingUnitsQA(cmd.Context())
+			if err != nil {
+				return err
+			}
+			fmt.Fprint(cmd.OutOrStdout(), formatQASummary(summary))
+			return nil
+		},
+	}
+}
+
+func formatQASummary(summary persistence.QASummary) string {
+	return fmt.Sprintf(
+		"qa approved=%d rejected=%d pending=%d\n",
+		summary.Approved,
+		summary.Rejected,
+		summary.Pending,
+	)
 }
 
 func placeholderCommand(use string, short string) *cobra.Command {

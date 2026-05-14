@@ -232,6 +232,24 @@ select count(*) from extracted_artifacts;
 -- name: CountHousingUnits :one
 select count(*) from housing_units;
 
+-- name: CountHousingUnitsByQAStatus :one
+select count(*) from housing_units
+where qa_status = $1;
+
+-- name: PromoteHousingUnitsQA :exec
+update housing_units
+set qa_status = case
+	when notice_id is not null
+		and attachment_id is not null
+		and source_artifact_id is not null
+		and unit_no <> ''
+		and exclusive_area_m2 is not null
+		and source_span <> ''
+	then 'approved'
+	else 'rejected'
+end
+where qa_status = 'pending';
+
 -- name: ListExistingNoticeSeqs :many
 select seq
 from source_notices
@@ -263,6 +281,7 @@ select
 	source_span,
 	qa_status
 from housing_units
+where qa_status = $2
 order by id desc
 limit $1;
 

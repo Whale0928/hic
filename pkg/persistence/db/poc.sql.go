@@ -33,6 +33,18 @@ func (q *Queries) CountHousingUnits(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countHousingUnitsByQAStatus = `-- name: CountHousingUnitsByQAStatus :one
+select count(*) from housing_units
+where qa_status = $1
+`
+
+func (q *Queries) CountHousingUnitsByQAStatus(ctx context.Context, qaStatus string) (int64, error) {
+	row := q.db.QueryRow(ctx, countHousingUnitsByQAStatus, qaStatus)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countStoredObjects = `-- name: CountStoredObjects :one
 select count(*) from stored_objects
 `
@@ -218,9 +230,15 @@ select
 	source_span,
 	qa_status
 from housing_units
+where qa_status = $2
 order by id desc
 limit $1
 `
+
+type ListHousingUnitsParams struct {
+	Limit    int32  `json:"limit"`
+	QaStatus string `json:"qa_status"`
+}
 
 type ListHousingUnitsRow struct {
 	ID              int64          `json:"id"`
@@ -246,8 +264,8 @@ type ListHousingUnitsRow struct {
 	QaStatus        string         `json:"qa_status"`
 }
 
-func (q *Queries) ListHousingUnits(ctx context.Context, limit int32) ([]ListHousingUnitsRow, error) {
-	rows, err := q.db.Query(ctx, listHousingUnits, limit)
+func (q *Queries) ListHousingUnits(ctx context.Context, arg ListHousingUnitsParams) ([]ListHousingUnitsRow, error) {
+	rows, err := q.db.Query(ctx, listHousingUnits, arg.Limit, arg.QaStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -357,6 +375,26 @@ func (q *Queries) ListSourceNotices(ctx context.Context, limit int32) ([]ListSou
 		return nil, err
 	}
 	return items, nil
+}
+
+const promoteHousingUnitsQA = `-- name: PromoteHousingUnitsQA :exec
+update housing_units
+set qa_status = case
+	when notice_id is not null
+		and attachment_id is not null
+		and source_artifact_id is not null
+		and unit_no <> ''
+		and exclusive_area_m2 is not null
+		and source_span <> ''
+	then 'approved'
+	else 'rejected'
+end
+where qa_status = 'pending'
+`
+
+func (q *Queries) PromoteHousingUnitsQA(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, promoteHousingUnitsQA)
+	return err
 }
 
 const upsertAttachment = `-- name: UpsertAttachment :one

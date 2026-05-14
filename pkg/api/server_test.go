@@ -12,9 +12,9 @@ import (
 
 type fakeRepository struct{}
 
-func (fakeRepository) ListHousingUnits(ctx context.Context, limit int32) ([]persistence.HousingUnitView, error) {
+func (fakeRepository) ListHousingUnits(ctx context.Context, limit int32, qaStatus string) ([]persistence.HousingUnitView, error) {
 	return []persistence.HousingUnitView{
-		{ID: 1, Agency: "SH", HousingName: "청년주택", UnitNo: "1201", UnitType: "36A", SourceSpan: "xlsx://주택목록!2"},
+		{ID: 1, Agency: "SH", HousingName: "청년주택", UnitNo: qaStatus, UnitType: "36A", SourceSpan: "xlsx://주택목록!2"},
 	}, nil
 }
 
@@ -57,7 +57,26 @@ func TestServer_Units(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &units); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if len(units) != 1 || units[0].UnitNo != "1201" {
+	if len(units) != 1 || units[0].UnitNo != "approved" {
+		t.Fatalf("units = %+v", units)
+	}
+}
+
+func TestServer_Units_QA상태를쿼리로지정한다(t *testing.T) {
+	e := New(fakeRepository{})
+	req := httptest.NewRequest(http.MethodGet, "/units?limit=1&qa_status=pending", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var units []persistence.HousingUnitView
+	if err := json.Unmarshal(rec.Body.Bytes(), &units); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(units) != 1 || units[0].UnitNo != "pending" {
 		t.Fatalf("units = %+v", units)
 	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 type Repository interface {
-	ListHousingUnits(ctx context.Context, limit int32) ([]persistence.HousingUnitView, error)
+	ListHousingUnits(ctx context.Context, limit int32, qaStatus string) ([]persistence.HousingUnitView, error)
 	ListSourceNotices(ctx context.Context, limit int32) ([]persistence.SourceNoticeView, error)
 }
 
@@ -34,7 +34,7 @@ func (s Server) health(c echo.Context) error {
 }
 
 func (s Server) listUnits(c echo.Context) error {
-	units, err := s.repo.ListHousingUnits(c.Request().Context(), parseLimit(c.QueryParam("limit"), 200))
+	units, err := s.repo.ListHousingUnits(c.Request().Context(), parseLimit(c.QueryParam("limit"), 200), qaStatusParam(c.QueryParam("qa_status")))
 	if err != nil {
 		return err
 	}
@@ -61,4 +61,11 @@ func parseLimit(raw string, fallback int32) int32 {
 		return 1000
 	}
 	return int32(value)
+}
+
+func qaStatusParam(raw string) string {
+	if raw == "" {
+		return "approved"
+	}
+	return raw
 }
