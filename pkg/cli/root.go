@@ -463,7 +463,11 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "db stored_objects=%d extracted_artifacts=%d housing_units=%d inserted_artifacts=%d upserted_units=%d\n", storedObjects, totalArtifacts, totalUnits, insertedArtifacts, upsertedUnits)
+			qaSummary, err := repo.PromoteHousingUnitsQA(cmd.Context())
+			if err != nil {
+				return err
+			}
+			fmt.Fprint(cmd.OutOrStdout(), formatCollectionSummary(downloaded, insertedArtifacts, upsertedUnits, storedObjects, totalArtifacts, totalUnits, qaSummary))
 			return nil
 		},
 	}
@@ -476,6 +480,20 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 	cmd.Flags().IntVar(&maxAgeDays, "max-age-days", 30, "지정 일수보다 오래된 공고는 제외합니다. 0이면 비활성화합니다")
 	cmd.Flags().BoolVar(&skipExisting, "skip-existing", true, "--seq가 없을 때 이미 수집한 모집공고를 건너뜁니다")
 	return cmd
+}
+
+func formatCollectionSummary(downloaded int, insertedArtifacts int, upsertedUnits int, storedObjects int64, totalArtifacts int64, totalUnits int64, qaSummary persistence.QASummary) string {
+	return fmt.Sprintf(
+		"db stored_objects=%d extracted_artifacts=%d housing_units=%d inserted_artifacts=%d upserted_units=%d qa_approved=%d qa_rejected=%d qa_pending=%d\n",
+		storedObjects,
+		totalArtifacts,
+		totalUnits,
+		insertedArtifacts,
+		upsertedUnits,
+		qaSummary.Approved,
+		qaSummary.Rejected,
+		qaSummary.Pending,
+	)
 }
 
 func splitCSV(raw string) []string {

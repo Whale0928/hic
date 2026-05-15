@@ -152,6 +152,19 @@ func TestFormatQASummary_승격결과를출력한다(t *testing.T) {
 	}
 }
 
+func TestFormatCollectionSummary_QA승격결과를함께출력한다(t *testing.T) {
+	got := formatCollectionSummary(7, 31, 28, 31, 42, 28, persistence.QASummary{
+		Approved: 28,
+		Rejected: 0,
+		Pending:  0,
+	})
+
+	want := "db stored_objects=31 extracted_artifacts=42 housing_units=28 inserted_artifacts=31 upserted_units=28 qa_approved=28 qa_rejected=0 qa_pending=0\n"
+	if got != want {
+		t.Fatalf("formatCollectionSummary() = %q, want %q", got, want)
+	}
+}
+
 func TestNormalizeHousingUnitsFromArtifacts_PDF신청주택표를정규화한다(t *testing.T) {
 	units := normalizeHousingUnitsFromArtifacts(extraction.AttachmentKindNoticePDF, []extraction.ExtractedArtifact{{
 		Type:       extraction.ArtifactTypePDFText,
