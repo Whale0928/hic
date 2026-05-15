@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"hic/pkg/persistence"
@@ -78,5 +81,47 @@ func TestServer_Offerings_QA상태를쿼리로지정한다(t *testing.T) {
 	}
 	if len(offerings) != 1 || offerings[0].UnitNo != "pending" {
 		t.Fatalf("offerings = %+v", offerings)
+	}
+}
+
+func TestServer_Resources_HTML리포트를제공한다(t *testing.T) {
+	resourcesDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(resourcesDir, "pdf-offerings.html"), []byte("<html><body>PDF report</body></html>"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	e := NewWithResources(fakeRepository{}, resourcesDir)
+	req := httptest.NewRequest(http.MethodGet, "/resources/pdf-offerings.html", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "PDF report") {
+		t.Fatalf("body = %q, want PDF report", rec.Body.String())
+	}
+}
+
+func TestServer_PDFOfferingsReport_JSON리포트를제공한다(t *testing.T) {
+	resourcesDir := t.TempDir()
+	report := []byte(`{"generated_at":"2026-05-15T00:00:00Z","offerings":[{"housing_name":"정릉 희망하우징"}]}`)
+	if err := os.WriteFile(filepath.Join(resourcesDir, "pdf-offerings.json"), report, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	e := NewWithResources(fakeRepository{}, resourcesDir)
+	req := httptest.NewRequest(http.MethodGet, "/reports/pdf-offerings", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	if !strings.Contains(rec.Body.String(), "정릉 희망하우징") {
+		t.Fatalf("body = %q, want report json", rec.Body.String())
 	}
 }

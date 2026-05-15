@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 
 	"hic/pkg/persistence"
@@ -16,16 +18,25 @@ type Repository interface {
 }
 
 type Server struct {
-	repo Repository
+	repo         Repository
+	resourcesDir string
 }
 
 func New(repo Repository) *echo.Echo {
-	server := Server{repo: repo}
+	return NewWithResources(repo, "resources")
+}
+
+func NewWithResources(repo Repository, resourcesDir string) *echo.Echo {
+	server := Server{repo: repo, resourcesDir: resourcesDir}
 	e := echo.New()
 	e.HideBanner = true
 	e.GET("/health", server.health)
 	e.GET("/offerings", server.listOfferings)
 	e.GET("/notices", server.listNotices)
+	if resourcesDir != "" {
+		e.Static("/resources", resourcesDir)
+		e.GET("/reports/pdf-offerings", server.pdfOfferingsReport)
+	}
 	return e
 }
 
@@ -47,6 +58,18 @@ func (s Server) listNotices(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, notices)
+}
+
+func (s Server) pdfOfferingsReport(c echo.Context) error {
+	path := filepath.Join(s.resourcesDir, "pdf-offerings.json")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return echo.NewHTTPError(http.StatusNotFound, "pdf offerings report not found")
+		}
+		return err
+	}
+	return c.JSONBlob(http.StatusOK, body)
 }
 
 func parseLimit(raw string, fallback int32) int32 {
