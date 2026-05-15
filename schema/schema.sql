@@ -205,7 +205,9 @@ create table if not exists offerings (
 	source_artifact_id bigint references extracted_artifacts(id),
 	agency text not null,
 	source text not null,
-	offering_type text not null default 'unit',
+	application_unit_label text not null default '',
+	supply_method text not null default '',
+	application_category text not null default '',
 	supply_category text not null default '',
 	list_no text not null default '',
 	district text not null default '',
@@ -228,10 +230,19 @@ create table if not exists offerings (
 	deposit_krw bigint,
 	jeonse_deposit_text text not null default '',
 	jeonse_deposit_krw bigint,
+	contract_deposit_krw bigint,
+	balance_payment_krw bigint,
 	monthly_rent_text text not null default '',
 	monthly_rent_amount numeric,
 	monthly_rent_krw bigint,
 	supply_count integer,
+	reserved_count integer,
+	gender_requirement text not null default '',
+	occupancy_type text not null default '',
+	capacity_persons integer,
+	dormitory_fee_krw bigint,
+	heating_method text not null default '',
+	move_in_start_text text not null default '',
 	direction text not null default '',
 	status text not null default '',
 	source_sheet text not null default '',
@@ -246,7 +257,9 @@ create table if not exists offerings (
 );
 
 alter table if exists offerings add column if not exists source_artifact_id bigint references extracted_artifacts(id);
-alter table if exists offerings add column if not exists offering_type text not null default 'unit';
+alter table if exists offerings add column if not exists application_unit_label text not null default '';
+alter table if exists offerings add column if not exists supply_method text not null default '';
+alter table if exists offerings add column if not exists application_category text not null default '';
 alter table if exists offerings add column if not exists supply_category text not null default '';
 alter table if exists offerings add column if not exists list_no text not null default '';
 alter table if exists offerings add column if not exists district text not null default '';
@@ -260,7 +273,16 @@ alter table if exists offerings add column if not exists elevator_installed bool
 alter table if exists offerings add column if not exists deposit_krw bigint;
 alter table if exists offerings add column if not exists jeonse_deposit_text text not null default '';
 alter table if exists offerings add column if not exists jeonse_deposit_krw bigint;
+alter table if exists offerings add column if not exists contract_deposit_krw bigint;
+alter table if exists offerings add column if not exists balance_payment_krw bigint;
 alter table if exists offerings add column if not exists monthly_rent_krw bigint;
+alter table if exists offerings add column if not exists reserved_count integer;
+alter table if exists offerings add column if not exists gender_requirement text not null default '';
+alter table if exists offerings add column if not exists occupancy_type text not null default '';
+alter table if exists offerings add column if not exists capacity_persons integer;
+alter table if exists offerings add column if not exists dormitory_fee_krw bigint;
+alter table if exists offerings add column if not exists heating_method text not null default '';
+alter table if exists offerings add column if not exists move_in_start_text text not null default '';
 alter table if exists offerings add column if not exists source_sheet text not null default '';
 alter table if exists offerings add column if not exists source_row integer;
 alter table if exists offerings add column if not exists source_cell text not null default '';
@@ -268,6 +290,7 @@ alter table if exists offerings add column if not exists source_page integer;
 alter table if exists offerings add column if not exists source_span text not null default '';
 alter table if exists offerings add column if not exists qa_status text not null default 'pending';
 alter table if exists offerings alter column unit_no drop not null;
+alter table if exists offerings drop column if exists offering_type;
 
 drop index if exists idx_housing_units_notice_id;
 drop index if exists idx_housing_units_attachment_id;
@@ -279,11 +302,13 @@ drop index if exists idx_housing_units_qa_status;
 drop index if exists idx_housing_units_raw_row;
 drop index if exists uq_housing_units_attachment_source_span;
 drop index if exists uq_housing_units_source_identity;
+drop index if exists idx_offerings_type;
 
 create index if not exists idx_offerings_notice_id on offerings(notice_id);
 create index if not exists idx_offerings_attachment_id on offerings(attachment_id);
 create index if not exists idx_offerings_source_artifact_id on offerings(source_artifact_id);
-create index if not exists idx_offerings_type on offerings(offering_type);
+create index if not exists idx_offerings_application_unit_label on offerings(application_unit_label);
+create index if not exists idx_offerings_application_category on offerings(application_category);
 create index if not exists idx_offerings_area on offerings(exclusive_area_m2);
 create index if not exists idx_offerings_rent on offerings(deposit_amount, monthly_rent_amount);
 create index if not exists idx_offerings_address on offerings(district, legal_dong);
@@ -420,20 +445,31 @@ comment on column extracted_artifacts.artifact_type is 'Artifact kind such as xl
 comment on column extracted_artifacts.source_span is 'Machine-readable or human-readable pointer to the source page, sheet, row, cell, or HTML selector.';
 comment on column extracted_artifacts.content_json is 'Extractor payload for audit and reprocessing. Serving APIs should use normalized tables.';
 
-comment on table offerings is 'Normalized offering records extracted from recruitment notices. An offering may represent one known unit or a group whose exact unit numbers are assigned later.';
-comment on column offerings.offering_type is 'Offering grain: unit for a specific unit or room, group for grouped supply by complex/type/area/count.';
+comment on table offerings is 'Normalized offering records extracted from recruitment notices. An offering is one application-selectable unit; unit_no may be null when the source assigns exact units later.';
+comment on column offerings.application_unit_label is 'Human-readable application unit label such as 세곡2지구 59㎡ 일반 or 정릉 희망하우징 여성.';
+comment on column offerings.supply_method is 'Supply method such as 신규공급, 재공급, 잔여세대, or 예비입주자 when provided.';
+comment on column offerings.application_category is 'Application category such as 일반, 주거약자, 우선공급, 남성, or 여성 when it changes eligibility or selection.';
 comment on column offerings.supply_category is 'Supply category such as 신규공급 or 재공급 when provided by the source.';
 comment on column offerings.list_no is 'Original row/list number from an offering list attachment.';
 comment on column offerings.district is 'Seoul district extracted from the address, such as 영등포구.';
 comment on column offerings.address is 'Full normalized address. This must not be left only in raw_row.';
 comment on column offerings.legal_dong is 'Legal dong candidate parsed from the address.';
 comment on column offerings.housing_name is 'Source housing name. This may overlap with complex_name in SH spreadsheets.';
-comment on column offerings.unit_no is 'Unit or room number inside a building. Null for group offerings whose unit numbers are assigned later.';
+comment on column offerings.unit_no is 'Unit or room number inside a building. Null when the notice accepts applications by complex, area, category, gender, or another application-selectable unit.';
 comment on column offerings.floor_no is 'Floor number when the source provides it or it can be inferred from unit_no.';
 comment on column offerings.deposit_krw is 'Normalized deposit amount in KRW.';
 comment on column offerings.jeonse_deposit_krw is 'Normalized jeonse deposit amount in KRW when the offering is deposit-only.';
+comment on column offerings.contract_deposit_krw is 'Contract deposit amount in KRW, commonly 10 percent of jeonse deposit.';
+comment on column offerings.balance_payment_krw is 'Balance payment amount in KRW, commonly 90 percent of jeonse deposit.';
 comment on column offerings.monthly_rent_krw is 'Normalized monthly rent amount in KRW.';
-comment on column offerings.supply_count is 'Number of units represented by this offering. Unit offerings usually represent one unit; group offerings may represent many.';
+comment on column offerings.supply_count is 'Number of units represented by this offering.';
+comment on column offerings.reserved_count is 'Number of reserve or waitlist slots when the source separates selected and reserve counts.';
+comment on column offerings.gender_requirement is 'Gender requirement such as 남성 or 여성 when eligibility is separated by gender.';
+comment on column offerings.occupancy_type is 'Occupancy type such as 원룸형 or 1인실 when provided.';
+comment on column offerings.capacity_persons is 'Number of persons the room or unit is designed for, such as 1 for 1인실.';
+comment on column offerings.dormitory_fee_krw is 'Dormitory fee in KRW for public dormitory offerings when rent/deposit fields do not apply.';
+comment on column offerings.heating_method is 'Heating method such as 개별난방 or 지역난방.';
+comment on column offerings.move_in_start_text is 'Original move-in start or expected move-in text from the source.';
 comment on column offerings.source_span is 'Evidence pointer for the normalized offering record.';
 comment on column offerings.qa_status is 'Promotion state for serving. Only QA-approved records should be exposed by default.';
 comment on column offerings.raw_row is 'Raw row evidence for audit and reprocessing, not the primary query model.';

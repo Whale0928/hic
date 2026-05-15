@@ -9,69 +9,86 @@ import (
 	"hic/pkg/extraction"
 )
 
-type OfferingType string
-
-const (
-	OfferingTypeUnit  OfferingType = "unit"
-	OfferingTypeGroup OfferingType = "group"
-)
-
 type OfferingCandidate struct {
-	OfferingType      OfferingType
-	SupplyCategory    string
-	ListNo            string
-	District          string
-	Address           string
-	LegalDong         string
-	AddressDetail     string
-	HousingName       string
-	ComplexName       string
-	BuildingName      string
-	UnitNo            string
-	FloorNo           *int
-	UnitType          string
-	StructureType     string
-	ExclusiveAreaM2   *float64
-	AreaPyeong        *float64
-	DepositText       string
-	DepositKRW        *int64
-	JeonseDepositText string
-	JeonseDepositKRW  *int64
-	MonthlyRentText   string
-	MonthlyRentKRW    *int64
-	SupplyCount       *int
-	Direction         string
-	Status            string
-	SourceSheet       string
-	SourceRow         int
-	SourceCell        string
-	SourcePage        int
-	SourceSpan        string
-	RawRow            map[string]any
-	Confidence        float64
+	ApplicationUnitLabel string
+	SupplyMethod         string
+	ApplicationCategory  string
+	SupplyCategory       string
+	ListNo               string
+	District             string
+	Address              string
+	LegalDong            string
+	AddressDetail        string
+	HousingName          string
+	ComplexName          string
+	BuildingName         string
+	UnitNo               string
+	FloorNo              *int
+	UnitType             string
+	StructureType        string
+	ExclusiveAreaM2      *float64
+	AreaPyeong           *float64
+	DepositText          string
+	DepositKRW           *int64
+	JeonseDepositText    string
+	JeonseDepositKRW     *int64
+	ContractDepositKRW   *int64
+	BalancePaymentKRW    *int64
+	MonthlyRentText      string
+	MonthlyRentKRW       *int64
+	SupplyCount          *int
+	ReservedCount        *int
+	GenderRequirement    string
+	OccupancyType        string
+	CapacityPersons      *int
+	DormitoryFeeKRW      *int64
+	HeatingMethod        string
+	MoveInStartText      string
+	Direction            string
+	Status               string
+	SourceSheet          string
+	SourceRow            int
+	SourceCell           string
+	SourcePage           int
+	SourceSpan           string
+	RawRow               map[string]any
+	Confidence           float64
 }
 
 type headerMap struct {
-	supplyCategory int
-	listNo         int
-	district       int
-	address        int
-	legalDong      int
-	addressDetail  int
-	housingName    int
-	building       int
-	unit           int
-	floor          int
-	unitType       int
-	structureType  int
-	area           int
-	pyeong         int
-	deposit        int
-	rent           int
-	count          int
-	direction      int
-	status         int
-	valid          bool
+	applicationUnitLabel int
+	supplyMethod         int
+	supplyCategory       int
+	applicationCategory  int
+	listNo               int
+	district             int
+	address              int
+	legalDong            int
+	addressDetail        int
+	housingName          int
+	building             int
+	unit                 int
+	floor                int
+	unitType             int
+	structureType        int
+	area                 int
+	pyeong               int
+	deposit              int
+	jeonseDeposit        int
+	contractDeposit      int
+	balancePayment       int
+	rent                 int
+	count                int
+	reservedCount        int
+	gender               int
+	occupancyType        int
+	capacity             int
+	dormitoryFee         int
+	heating              int
+	moveInStart          int
+	direction            int
+	status               int
+	valid                bool
 }
 
 var numericPattern = regexp.MustCompile(`[-+]?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?|[-+]?[0-9]+(?:\.[0-9]+)?`)
@@ -113,30 +130,49 @@ func inferHeader(cells []string) headerMap {
 	}
 
 	header := headerMap{
-		supplyCategory: -1,
-		listNo:         -1,
-		district:       -1,
-		address:        -1,
-		legalDong:      -1,
-		addressDetail:  -1,
-		housingName:    -1,
-		building:       -1,
-		unit:           -1,
-		floor:          -1,
-		unitType:       -1,
-		structureType:  -1,
-		area:           -1,
-		pyeong:         -1,
-		deposit:        -1,
-		rent:           -1,
-		count:          -1,
-		direction:      -1,
-		status:         -1,
+		applicationUnitLabel: -1,
+		supplyMethod:         -1,
+		supplyCategory:       -1,
+		applicationCategory:  -1,
+		listNo:               -1,
+		district:             -1,
+		address:              -1,
+		legalDong:            -1,
+		addressDetail:        -1,
+		housingName:          -1,
+		building:             -1,
+		unit:                 -1,
+		floor:                -1,
+		unitType:             -1,
+		structureType:        -1,
+		area:                 -1,
+		pyeong:               -1,
+		deposit:              -1,
+		jeonseDeposit:        -1,
+		contractDeposit:      -1,
+		balancePayment:       -1,
+		rent:                 -1,
+		count:                -1,
+		reservedCount:        -1,
+		gender:               -1,
+		occupancyType:        -1,
+		capacity:             -1,
+		dormitoryFee:         -1,
+		heating:              -1,
+		moveInStart:          -1,
+		direction:            -1,
+		status:               -1,
 	}
 	for i, cell := range cells {
 		key := normalizeHeader(cell)
 		switch {
-		case key == "공급유형" || key == "유형" || key == "공급구분":
+		case key == "신청단위" || key == "신청가능단위":
+			header.applicationUnitLabel = i
+		case key == "공급방법" || key == "공급방식":
+			header.supplyMethod = i
+		case key == "유형" || key == "신청유형" || key == "공급유형":
+			header.applicationCategory = i
+		case key == "공급구분":
 			header.supplyCategory = i
 		case key == "번호" || key == "연번" || key == "목록번호":
 			header.listNo = i
@@ -166,10 +202,30 @@ func inferHeader(cells []string) headerMap {
 			header.pyeong = i
 		case strings.Contains(key, "보증금"):
 			header.deposit = i
+		case strings.Contains(key, "전세금액") || strings.Contains(key, "전세금"):
+			header.jeonseDeposit = i
+		case strings.Contains(key, "계약금"):
+			header.contractDeposit = i
+		case strings.Contains(key, "잔금"):
+			header.balancePayment = i
 		case strings.Contains(key, "월임대료") || key == "임대료" || strings.Contains(key, "월세"):
 			header.rent = i
 		case strings.Contains(key, "공급호수") || strings.Contains(key, "세대수") || strings.Contains(key, "호수계"):
 			header.count = i
+		case key == "예비" || strings.Contains(key, "예비호수"):
+			header.reservedCount = i
+		case key == "성별":
+			header.gender = i
+		case strings.Contains(key, "주택유형") || strings.Contains(key, "실유형") || strings.Contains(key, "거주유형"):
+			header.occupancyType = i
+		case strings.Contains(key, "인실") || strings.Contains(key, "수용인원"):
+			header.capacity = i
+		case strings.Contains(key, "기숙사비"):
+			header.dormitoryFee = i
+		case strings.Contains(key, "난방"):
+			header.heating = i
+		case strings.Contains(key, "입주시작") || strings.Contains(key, "입주예정"):
+			header.moveInStart = i
 		case strings.Contains(key, "방향") || strings.Contains(key, "향"):
 			header.direction = i
 		case strings.Contains(key, "상태") || strings.Contains(key, "공가"):
@@ -182,47 +238,63 @@ func inferHeader(cells []string) headerMap {
 
 func buildOfferingCandidate(artifact extraction.ExtractedArtifact, cells []string, labels []string, header headerMap) OfferingCandidate {
 	depositText := cellAt(cells, header.deposit)
+	jeonseDepositText := cellAt(cells, header.jeonseDeposit)
 	rentText := cellAt(cells, header.rent)
 	if rentText == "" && header.deposit >= 0 && strings.Contains(normalizeHeader(cellAt(labels, header.deposit)), "임대료") {
 		rentText = cellAt(cells, header.deposit+1)
 	}
 
-	offeringType := OfferingTypeUnit
-	if cellAt(cells, header.unit) == "" && parseIntPtr(cellAt(cells, header.count)) != nil {
-		offeringType = OfferingTypeGroup
-	}
+	applicationCategory := firstNonEmptyString(cellAt(cells, header.applicationCategory), cellAt(cells, header.supplyCategory))
+	housingName := cellAt(cells, header.housingName)
+	unitNo := cellAt(cells, header.unit)
+	gender := cellAt(cells, header.gender)
+	area := parseFloatPtr(cellAt(cells, header.area))
+	moneyScaleLabel := strings.Join(labels, " ")
 
 	return OfferingCandidate{
-		OfferingType:    offeringType,
-		SupplyCategory:  cellAt(cells, header.supplyCategory),
-		ListNo:          cellAt(cells, header.listNo),
-		District:        cellAt(cells, header.district),
-		Address:         cellAt(cells, header.address),
-		LegalDong:       cellAt(cells, header.legalDong),
-		AddressDetail:   cellAt(cells, header.addressDetail),
-		HousingName:     cellAt(cells, header.housingName),
-		ComplexName:     cellAt(cells, header.housingName),
-		BuildingName:    cellAt(cells, header.building),
-		UnitNo:          cellAt(cells, header.unit),
-		FloorNo:         parseIntPtr(cellAt(cells, header.floor)),
-		UnitType:        cellAt(cells, header.unitType),
-		StructureType:   cellAt(cells, header.structureType),
-		ExclusiveAreaM2: parseFloatPtr(cellAt(cells, header.area)),
-		AreaPyeong:      parseFloatPtr(cellAt(cells, header.pyeong)),
-		DepositText:     depositText,
-		DepositKRW:      parseKRWPtr(depositText),
-		MonthlyRentText: rentText,
-		MonthlyRentKRW:  parseKRWPtr(rentText),
-		SupplyCount:     parseIntPtr(cellAt(cells, header.count)),
-		Direction:       cellAt(cells, header.direction),
-		Status:          cellAt(cells, header.status),
-		SourceSheet:     artifact.SourceSheet,
-		SourceRow:       artifact.SourceRow,
-		SourceCell:      artifact.SourceCell,
-		SourcePage:      artifact.SourcePage,
-		SourceSpan:      artifact.SourceSpan,
-		RawRow:          rowToMap(labels, cells),
-		Confidence:      0.72,
+		ApplicationUnitLabel: firstNonEmptyString(cellAt(cells, header.applicationUnitLabel), buildApplicationUnitLabel(housingName, unitNo, area, applicationCategory, gender)),
+		SupplyMethod:         cellAt(cells, header.supplyMethod),
+		ApplicationCategory:  applicationCategory,
+		SupplyCategory:       cellAt(cells, header.supplyCategory),
+		ListNo:               cellAt(cells, header.listNo),
+		District:             cellAt(cells, header.district),
+		Address:              cellAt(cells, header.address),
+		LegalDong:            cellAt(cells, header.legalDong),
+		AddressDetail:        cellAt(cells, header.addressDetail),
+		HousingName:          housingName,
+		ComplexName:          housingName,
+		BuildingName:         cellAt(cells, header.building),
+		UnitNo:               unitNo,
+		FloorNo:              parseIntPtr(cellAt(cells, header.floor)),
+		UnitType:             cellAt(cells, header.unitType),
+		StructureType:        cellAt(cells, header.structureType),
+		ExclusiveAreaM2:      area,
+		AreaPyeong:           parseFloatPtr(cellAt(cells, header.pyeong)),
+		DepositText:          depositText,
+		DepositKRW:           parseKRWPtr(depositText),
+		JeonseDepositText:    jeonseDepositText,
+		JeonseDepositKRW:     parseMoneyPtr(jeonseDepositText, cellAt(labels, header.jeonseDeposit)),
+		ContractDepositKRW:   parseMoneyPtr(cellAt(cells, header.contractDeposit), cellAt(labels, header.contractDeposit)+" "+moneyScaleLabel),
+		BalancePaymentKRW:    parseMoneyPtr(cellAt(cells, header.balancePayment), cellAt(labels, header.balancePayment)+" "+moneyScaleLabel),
+		MonthlyRentText:      rentText,
+		MonthlyRentKRW:       parseKRWPtr(rentText),
+		SupplyCount:          parseIntPtr(cellAt(cells, header.count)),
+		ReservedCount:        parseIntPtr(cellAt(cells, header.reservedCount)),
+		GenderRequirement:    gender,
+		OccupancyType:        cellAt(cells, header.occupancyType),
+		CapacityPersons:      parseIntPtr(cellAt(cells, header.capacity)),
+		DormitoryFeeKRW:      parseKRWPtr(cellAt(cells, header.dormitoryFee)),
+		HeatingMethod:        cellAt(cells, header.heating),
+		MoveInStartText:      cellAt(cells, header.moveInStart),
+		Direction:            cellAt(cells, header.direction),
+		Status:               cellAt(cells, header.status),
+		SourceSheet:          artifact.SourceSheet,
+		SourceRow:            artifact.SourceRow,
+		SourceCell:           artifact.SourceCell,
+		SourcePage:           artifact.SourcePage,
+		SourceSpan:           artifact.SourceSpan,
+		RawRow:               rowToMap(labels, cells),
+		Confidence:           0.72,
 	}
 }
 
@@ -291,6 +363,42 @@ func cellAt(cells []string, idx int) string {
 	return cells[idx]
 }
 
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func buildApplicationUnitLabel(housingName string, unitNo string, area *float64, applicationCategory string, gender string) string {
+	parts := make([]string, 0, 5)
+	if strings.TrimSpace(housingName) != "" {
+		parts = append(parts, strings.TrimSpace(housingName))
+	}
+	if strings.TrimSpace(unitNo) != "" {
+		parts = append(parts, strings.TrimSpace(unitNo))
+	}
+	if area != nil {
+		parts = append(parts, formatArea(*area))
+	}
+	if strings.TrimSpace(applicationCategory) != "" {
+		parts = append(parts, strings.TrimSpace(applicationCategory))
+	}
+	if strings.TrimSpace(gender) != "" {
+		parts = append(parts, strings.TrimSpace(gender))
+	}
+	return strings.Join(parts, " ")
+}
+
+func formatArea(area float64) string {
+	if area == float64(int64(area)) {
+		return fmt.Sprintf("%.0f㎡", area)
+	}
+	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", area), "0"), ".") + "㎡"
+}
+
 func parseIntPtr(text string) *int {
 	numeric := strings.ReplaceAll(numericPattern.FindString(text), ",", "")
 	if numeric == "" {
@@ -326,4 +434,16 @@ func parseKRWPtr(text string) *int64 {
 	}
 	krw := int64(n)
 	return &krw
+}
+
+func parseMoneyPtr(text string, label string) *int64 {
+	value := parseKRWPtr(text)
+	if value == nil {
+		return nil
+	}
+	if strings.Contains(label, "천원") || strings.Contains(label, "천 원") {
+		krw := *value * 1000
+		return &krw
+	}
+	return value
 }

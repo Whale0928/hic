@@ -126,7 +126,7 @@ type NoticeSchedule struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
-// Normalized offering records extracted from recruitment notices. An offering may represent one known unit or a group whose exact unit numbers are assigned later.
+// Normalized offering records extracted from recruitment notices. An offering is one application-selectable unit; unit_no may be null when the source assigns exact units later.
 type Offering struct {
 	ID               int64       `json:"id"`
 	NoticeID         pgtype.Int8 `json:"notice_id"`
@@ -134,8 +134,12 @@ type Offering struct {
 	SourceArtifactID pgtype.Int8 `json:"source_artifact_id"`
 	Agency           string      `json:"agency"`
 	Source           string      `json:"source"`
-	// Offering grain: unit for a specific unit or room, group for grouped supply by complex/type/area/count.
-	OfferingType string `json:"offering_type"`
+	// Human-readable application unit label such as 세곡2지구 59㎡ 일반 or 정릉 희망하우징 여성.
+	ApplicationUnitLabel string `json:"application_unit_label"`
+	// Supply method such as 신규공급, 재공급, 잔여세대, or 예비입주자 when provided.
+	SupplyMethod string `json:"supply_method"`
+	// Application category such as 일반, 주거약자, 우선공급, 남성, or 여성 when it changes eligibility or selection.
+	ApplicationCategory string `json:"application_category"`
 	// Supply category such as 신규공급 or 재공급 when provided by the source.
 	SupplyCategory string `json:"supply_category"`
 	// Original row/list number from an offering list attachment.
@@ -151,7 +155,7 @@ type Offering struct {
 	HousingName  string `json:"housing_name"`
 	ComplexName  string `json:"complex_name"`
 	BuildingName string `json:"building_name"`
-	// Unit or room number inside a building. Null for group offerings whose unit numbers are assigned later.
+	// Unit or room number inside a building. Null when the notice accepts applications by complex, area, category, gender, or another application-selectable unit.
 	UnitNo pgtype.Text `json:"unit_no"`
 	Floor  pgtype.Int4 `json:"floor"`
 	// Floor number when the source provides it or it can be inferred from unit_no.
@@ -167,19 +171,37 @@ type Offering struct {
 	DepositKrw        pgtype.Int8 `json:"deposit_krw"`
 	JeonseDepositText string      `json:"jeonse_deposit_text"`
 	// Normalized jeonse deposit amount in KRW when the offering is deposit-only.
-	JeonseDepositKrw  pgtype.Int8    `json:"jeonse_deposit_krw"`
+	JeonseDepositKrw pgtype.Int8 `json:"jeonse_deposit_krw"`
+	// Contract deposit amount in KRW, commonly 10 percent of jeonse deposit.
+	ContractDepositKrw pgtype.Int8 `json:"contract_deposit_krw"`
+	// Balance payment amount in KRW, commonly 90 percent of jeonse deposit.
+	BalancePaymentKrw pgtype.Int8    `json:"balance_payment_krw"`
 	MonthlyRentText   string         `json:"monthly_rent_text"`
 	MonthlyRentAmount pgtype.Numeric `json:"monthly_rent_amount"`
 	// Normalized monthly rent amount in KRW.
 	MonthlyRentKrw pgtype.Int8 `json:"monthly_rent_krw"`
-	// Number of units represented by this offering. Unit offerings usually represent one unit; group offerings may represent many.
+	// Number of units represented by this offering.
 	SupplyCount pgtype.Int4 `json:"supply_count"`
-	Direction   string      `json:"direction"`
-	Status      string      `json:"status"`
-	SourceSheet string      `json:"source_sheet"`
-	SourceRow   pgtype.Int4 `json:"source_row"`
-	SourceCell  string      `json:"source_cell"`
-	SourcePage  pgtype.Int4 `json:"source_page"`
+	// Number of reserve or waitlist slots when the source separates selected and reserve counts.
+	ReservedCount pgtype.Int4 `json:"reserved_count"`
+	// Gender requirement such as 남성 or 여성 when eligibility is separated by gender.
+	GenderRequirement string `json:"gender_requirement"`
+	// Occupancy type such as 원룸형 or 1인실 when provided.
+	OccupancyType string `json:"occupancy_type"`
+	// Number of persons the room or unit is designed for, such as 1 for 1인실.
+	CapacityPersons pgtype.Int4 `json:"capacity_persons"`
+	// Dormitory fee in KRW for public dormitory offerings when rent/deposit fields do not apply.
+	DormitoryFeeKrw pgtype.Int8 `json:"dormitory_fee_krw"`
+	// Heating method such as 개별난방 or 지역난방.
+	HeatingMethod string `json:"heating_method"`
+	// Original move-in start or expected move-in text from the source.
+	MoveInStartText string      `json:"move_in_start_text"`
+	Direction       string      `json:"direction"`
+	Status          string      `json:"status"`
+	SourceSheet     string      `json:"source_sheet"`
+	SourceRow       pgtype.Int4 `json:"source_row"`
+	SourceCell      string      `json:"source_cell"`
+	SourcePage      pgtype.Int4 `json:"source_page"`
 	// Evidence pointer for the normalized offering record.
 	SourceSpan string `json:"source_span"`
 	// Raw row evidence for audit and reprocessing, not the primary query model.

@@ -131,7 +131,9 @@ qa
 
 ### 공급항목
 
-- `offering_type`
+- `application_unit_label`
+- `supply_method`
+- `application_category`
 - `supply_category`
 - `list_no`
 - `district`
@@ -145,6 +147,12 @@ qa
 - `unit_type`
 - `structure_type`
 - `elevator_installed`
+- `reserved_count`
+- `gender_requirement`
+- `occupancy_type`
+- `capacity_persons`
+- `heating_method`
+- `move_in_start_text`
 
 ### 면적/가격
 
@@ -153,9 +161,12 @@ qa
 - `deposit_krw`
 - `monthly_rent_krw`
 - `jeonse_deposit_krw`
+- `contract_deposit_krw`
+- `balance_payment_krw`
+- `dormitory_fee_krw`
 
-`unit_no`는 개별공급항목(Unit Offering)에서 필수이고, 그룹공급항목(Group Offering)에서는 비어 있을 수 있다.
-그룹공급항목은 `complex_name` 또는 `housing_name`, `exclusive_area_m2`, `supply_count`, 금액 필드 중 하나 이상을 중심으로 검증한다.
+공급항목(Offering)은 신청 가능 단위다. `unit_no`는 동호수가 원문에 공개된 경우에만 채우고, 장기전세/기숙사처럼 단지·면적·신청유형·모집호수 조합으로 신청하는 공고에서는 비워둘 수 있다.
+QA는 `application_unit_label`, `housing_name`/`complex_name`, `unit_no`, `supply_count`, 면적/거주유형, 금액 필드 중 하나 이상을 조합해 승인 여부를 판단한다.
 
 ### 상호전환
 
@@ -201,9 +212,9 @@ qa
 
 ### Normalize QA
 
-- 공급항목은 개별공급항목과 그룹공급항목으로 나누어 검증한다.
-- 개별공급항목은 주소, 자치구, 호실, 전용면적, 보증금/월임대료/전세금액 중 적용 가능한 금액 필드가 있어야 한다.
-- 그룹공급항목은 단지명 또는 주택명, 자치구, 전용면적, 모집호수, 보증금/월임대료/전세금액 중 적용 가능한 금액 필드가 있어야 하며, 호실은 비어 있을 수 있다.
+- 공급항목은 신청 가능 단위로 검증한다.
+- 동호수가 공개된 공급항목은 `unit_no`와 source span을 우선 근거로 삼는다.
+- 동호수가 공개되지 않은 공급항목은 `application_unit_label`, 단지명/주택명, 전용면적 또는 거주유형, 모집호수, 보증금/월임대료/전세금액/기숙사비 중 적용 가능한 금액 필드를 조합해 검증한다.
 - 상호전환 규칙은 공고 단위로 저장되고, 공급항목별 계산값이 생성되어야 한다.
 - 공급일정은 본문 텍스트가 아니라 일정 테이블에 저장되어야 한다.
 

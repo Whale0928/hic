@@ -33,31 +33,42 @@ type PersistedAttachment struct {
 }
 
 type OfferingView struct {
-	ID                int64    `json:"id"`
-	Agency            string   `json:"agency"`
-	Source            string   `json:"source"`
-	OfferingType      string   `json:"offering_type"`
-	SupplyCategory    string   `json:"supply_category"`
-	ListNo            string   `json:"list_no"`
-	District          string   `json:"district"`
-	Address           string   `json:"address"`
-	HousingName       string   `json:"housing_name"`
-	ComplexName       string   `json:"complex_name"`
-	BuildingName      string   `json:"building_name"`
-	UnitNo            string   `json:"unit_no"`
-	UnitType          string   `json:"unit_type"`
-	ExclusiveAreaM2   *float64 `json:"exclusive_area_m2,omitempty"`
-	DepositText       string   `json:"deposit_text"`
-	DepositKRW        *int64   `json:"deposit_krw,omitempty"`
-	JeonseDepositText string   `json:"jeonse_deposit_text"`
-	JeonseDepositKRW  *int64   `json:"jeonse_deposit_krw,omitempty"`
-	MonthlyRentText   string   `json:"monthly_rent_text"`
-	MonthlyRentKRW    *int64   `json:"monthly_rent_krw,omitempty"`
-	SupplyCount       *int32   `json:"supply_count,omitempty"`
-	SourceSheet       string   `json:"source_sheet"`
-	SourceRow         *int32   `json:"source_row,omitempty"`
-	SourceSpan        string   `json:"source_span"`
-	QAStatus          string   `json:"qa_status"`
+	ID                   int64    `json:"id"`
+	Agency               string   `json:"agency"`
+	Source               string   `json:"source"`
+	ApplicationUnitLabel string   `json:"application_unit_label"`
+	SupplyMethod         string   `json:"supply_method"`
+	ApplicationCategory  string   `json:"application_category"`
+	SupplyCategory       string   `json:"supply_category"`
+	ListNo               string   `json:"list_no"`
+	District             string   `json:"district"`
+	Address              string   `json:"address"`
+	HousingName          string   `json:"housing_name"`
+	ComplexName          string   `json:"complex_name"`
+	BuildingName         string   `json:"building_name"`
+	UnitNo               string   `json:"unit_no"`
+	UnitType             string   `json:"unit_type"`
+	ExclusiveAreaM2      *float64 `json:"exclusive_area_m2,omitempty"`
+	DepositText          string   `json:"deposit_text"`
+	DepositKRW           *int64   `json:"deposit_krw,omitempty"`
+	JeonseDepositText    string   `json:"jeonse_deposit_text"`
+	JeonseDepositKRW     *int64   `json:"jeonse_deposit_krw,omitempty"`
+	ContractDepositKRW   *int64   `json:"contract_deposit_krw,omitempty"`
+	BalancePaymentKRW    *int64   `json:"balance_payment_krw,omitempty"`
+	MonthlyRentText      string   `json:"monthly_rent_text"`
+	MonthlyRentKRW       *int64   `json:"monthly_rent_krw,omitempty"`
+	SupplyCount          *int32   `json:"supply_count,omitempty"`
+	ReservedCount        *int32   `json:"reserved_count,omitempty"`
+	GenderRequirement    string   `json:"gender_requirement"`
+	OccupancyType        string   `json:"occupancy_type"`
+	CapacityPersons      *int32   `json:"capacity_persons,omitempty"`
+	DormitoryFeeKRW      *int64   `json:"dormitory_fee_krw,omitempty"`
+	HeatingMethod        string   `json:"heating_method"`
+	MoveInStartText      string   `json:"move_in_start_text"`
+	SourceSheet          string   `json:"source_sheet"`
+	SourceRow            *int32   `json:"source_row,omitempty"`
+	SourceSpan           string   `json:"source_span"`
+	QAStatus             string   `json:"qa_status"`
 }
 
 type SourceNoticeView struct {
@@ -240,45 +251,56 @@ func (r *Repository) InsertArtifact(ctx context.Context, attachmentID int64, sto
 
 func (r *Repository) UpsertOffering(ctx context.Context, attachment PersistedAttachment, sourceArtifactID int64, offering normalize.OfferingCandidate) (int64, error) {
 	return r.queries.UpsertOffering(ctx, db.UpsertOfferingParams{
-		NoticeID:          int8Value(attachment.NoticeID),
-		AttachmentID:      int8Value(attachment.AttachmentID),
-		SourceArtifactID:  int8Value(sourceArtifactID),
-		Agency:            "SH",
-		Source:            "sh",
-		OfferingType:      offeringTypeValue(offering.OfferingType),
-		SupplyCategory:    offering.SupplyCategory,
-		ListNo:            offering.ListNo,
-		District:          offering.District,
-		Address:           offering.Address,
-		LegalDong:         offering.LegalDong,
-		AddressDetail:     offering.AddressDetail,
-		HousingName:       offering.HousingName,
-		ComplexName:       offering.ComplexName,
-		BuildingName:      offering.BuildingName,
-		UnitNo:            stringValue(offering.UnitNo),
-		Floor:             int4PtrValue(offering.FloorNo),
-		FloorNo:           int4PtrValue(offering.FloorNo),
-		UnitType:          offering.UnitType,
-		StructureType:     offering.StructureType,
-		ExclusiveAreaM2:   numericPtrValue(offering.ExclusiveAreaM2),
-		AreaPyeong:        numericPtrValue(offering.AreaPyeong),
-		DepositText:       offering.DepositText,
-		DepositKrw:        int8PtrValue(offering.DepositKRW),
-		JeonseDepositText: offering.JeonseDepositText,
-		JeonseDepositKrw:  int8PtrValue(offering.JeonseDepositKRW),
-		MonthlyRentText:   offering.MonthlyRentText,
-		MonthlyRentKrw:    int8PtrValue(offering.MonthlyRentKRW),
-		SupplyCount:       int4PtrValue(offering.SupplyCount),
-		Direction:         offering.Direction,
-		Status:            offering.Status,
-		SourceSheet:       offering.SourceSheet,
-		SourceRow:         int4Value(offering.SourceRow),
-		SourceCell:        offering.SourceCell,
-		SourcePage:        int4Value(offering.SourcePage),
-		SourceSpan:        offering.SourceSpan,
-		RawRow:            mustJSONAny(offering.RawRow),
-		Confidence:        numericValue(offering.Confidence),
-		QaStatus:          "pending",
+		NoticeID:             int8Value(attachment.NoticeID),
+		AttachmentID:         int8Value(attachment.AttachmentID),
+		SourceArtifactID:     int8Value(sourceArtifactID),
+		Agency:               "SH",
+		Source:               "sh",
+		ApplicationUnitLabel: offering.ApplicationUnitLabel,
+		SupplyMethod:         offering.SupplyMethod,
+		ApplicationCategory:  offering.ApplicationCategory,
+		SupplyCategory:       offering.SupplyCategory,
+		ListNo:               offering.ListNo,
+		District:             offering.District,
+		Address:              offering.Address,
+		LegalDong:            offering.LegalDong,
+		AddressDetail:        offering.AddressDetail,
+		HousingName:          offering.HousingName,
+		ComplexName:          offering.ComplexName,
+		BuildingName:         offering.BuildingName,
+		UnitNo:               stringValue(offering.UnitNo),
+		Floor:                int4PtrValue(offering.FloorNo),
+		FloorNo:              int4PtrValue(offering.FloorNo),
+		UnitType:             offering.UnitType,
+		StructureType:        offering.StructureType,
+		ExclusiveAreaM2:      numericPtrValue(offering.ExclusiveAreaM2),
+		AreaPyeong:           numericPtrValue(offering.AreaPyeong),
+		DepositText:          offering.DepositText,
+		DepositKrw:           int8PtrValue(offering.DepositKRW),
+		JeonseDepositText:    offering.JeonseDepositText,
+		JeonseDepositKrw:     int8PtrValue(offering.JeonseDepositKRW),
+		ContractDepositKrw:   int8PtrValue(offering.ContractDepositKRW),
+		BalancePaymentKrw:    int8PtrValue(offering.BalancePaymentKRW),
+		MonthlyRentText:      offering.MonthlyRentText,
+		MonthlyRentKrw:       int8PtrValue(offering.MonthlyRentKRW),
+		SupplyCount:          int4PtrValue(offering.SupplyCount),
+		ReservedCount:        int4PtrValue(offering.ReservedCount),
+		GenderRequirement:    offering.GenderRequirement,
+		OccupancyType:        offering.OccupancyType,
+		CapacityPersons:      int4PtrValue(offering.CapacityPersons),
+		DormitoryFeeKrw:      int8PtrValue(offering.DormitoryFeeKRW),
+		HeatingMethod:        offering.HeatingMethod,
+		MoveInStartText:      offering.MoveInStartText,
+		Direction:            offering.Direction,
+		Status:               offering.Status,
+		SourceSheet:          offering.SourceSheet,
+		SourceRow:            int4Value(offering.SourceRow),
+		SourceCell:           offering.SourceCell,
+		SourcePage:           int4Value(offering.SourcePage),
+		SourceSpan:           offering.SourceSpan,
+		RawRow:               mustJSONAny(offering.RawRow),
+		Confidence:           numericValue(offering.Confidence),
+		QaStatus:             "pending",
 	})
 }
 
@@ -353,31 +375,42 @@ func (r *Repository) ListOfferings(ctx context.Context, limit int32, qaStatus st
 	offerings := make([]OfferingView, 0, len(rows))
 	for _, row := range rows {
 		offerings = append(offerings, OfferingView{
-			ID:                row.ID,
-			Agency:            row.Agency,
-			Source:            row.Source,
-			OfferingType:      row.OfferingType,
-			SupplyCategory:    row.SupplyCategory,
-			ListNo:            row.ListNo,
-			District:          row.District,
-			Address:           row.Address,
-			HousingName:       row.HousingName,
-			ComplexName:       row.ComplexName,
-			BuildingName:      row.BuildingName,
-			UnitNo:            textToString(row.UnitNo),
-			UnitType:          row.UnitType,
-			ExclusiveAreaM2:   numericToFloat64Ptr(row.ExclusiveAreaM2),
-			DepositText:       row.DepositText,
-			DepositKRW:        int8ToInt64Ptr(row.DepositKrw),
-			JeonseDepositText: row.JeonseDepositText,
-			JeonseDepositKRW:  int8ToInt64Ptr(row.JeonseDepositKrw),
-			MonthlyRentText:   row.MonthlyRentText,
-			MonthlyRentKRW:    int8ToInt64Ptr(row.MonthlyRentKrw),
-			SupplyCount:       int4ToInt32Ptr(row.SupplyCount),
-			SourceSheet:       row.SourceSheet,
-			SourceRow:         int4ToInt32Ptr(row.SourceRow),
-			SourceSpan:        row.SourceSpan,
-			QAStatus:          row.QaStatus,
+			ID:                   row.ID,
+			Agency:               row.Agency,
+			Source:               row.Source,
+			ApplicationUnitLabel: row.ApplicationUnitLabel,
+			SupplyMethod:         row.SupplyMethod,
+			ApplicationCategory:  row.ApplicationCategory,
+			SupplyCategory:       row.SupplyCategory,
+			ListNo:               row.ListNo,
+			District:             row.District,
+			Address:              row.Address,
+			HousingName:          row.HousingName,
+			ComplexName:          row.ComplexName,
+			BuildingName:         row.BuildingName,
+			UnitNo:               textToString(row.UnitNo),
+			UnitType:             row.UnitType,
+			ExclusiveAreaM2:      numericToFloat64Ptr(row.ExclusiveAreaM2),
+			DepositText:          row.DepositText,
+			DepositKRW:           int8ToInt64Ptr(row.DepositKrw),
+			JeonseDepositText:    row.JeonseDepositText,
+			JeonseDepositKRW:     int8ToInt64Ptr(row.JeonseDepositKrw),
+			ContractDepositKRW:   int8ToInt64Ptr(row.ContractDepositKrw),
+			BalancePaymentKRW:    int8ToInt64Ptr(row.BalancePaymentKrw),
+			MonthlyRentText:      row.MonthlyRentText,
+			MonthlyRentKRW:       int8ToInt64Ptr(row.MonthlyRentKrw),
+			SupplyCount:          int4ToInt32Ptr(row.SupplyCount),
+			ReservedCount:        int4ToInt32Ptr(row.ReservedCount),
+			GenderRequirement:    row.GenderRequirement,
+			OccupancyType:        row.OccupancyType,
+			CapacityPersons:      int4ToInt32Ptr(row.CapacityPersons),
+			DormitoryFeeKRW:      int8ToInt64Ptr(row.DormitoryFeeKrw),
+			HeatingMethod:        row.HeatingMethod,
+			MoveInStartText:      row.MoveInStartText,
+			SourceSheet:          row.SourceSheet,
+			SourceRow:            int4ToInt32Ptr(row.SourceRow),
+			SourceSpan:           row.SourceSpan,
+			QAStatus:             row.QaStatus,
 		})
 	}
 	return offerings, nil
@@ -473,13 +506,6 @@ func dateToString(value pgtype.Date) string {
 		return ""
 	}
 	return value.Time.Format(time.DateOnly)
-}
-
-func offeringTypeValue(value normalize.OfferingType) string {
-	if value == "" {
-		return string(normalize.OfferingTypeUnit)
-	}
-	return string(value)
 }
 
 func numericValue(value float64) pgtype.Numeric {

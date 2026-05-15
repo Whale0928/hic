@@ -147,7 +147,9 @@ insert into offerings (
 	source_artifact_id,
 	agency,
 	source,
-	offering_type,
+	application_unit_label,
+	supply_method,
+	application_category,
 	supply_category,
 	list_no,
 	district,
@@ -168,9 +170,18 @@ insert into offerings (
 	deposit_krw,
 	jeonse_deposit_text,
 	jeonse_deposit_krw,
+	contract_deposit_krw,
+	balance_payment_krw,
 	monthly_rent_text,
 	monthly_rent_krw,
 	supply_count,
+	reserved_count,
+	gender_requirement,
+	occupancy_type,
+	capacity_persons,
+	dormitory_fee_krw,
+	heating_method,
+	move_in_start_text,
 	direction,
 	status,
 	source_sheet,
@@ -186,7 +197,8 @@ values (
 	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 	$11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
 	$21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-	$31, $32, $33, $34, $35, $36, $37, $38, $39
+	$31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
+	$41, $42, $43, $44, $45, $46, $47, $48, $49, $50
 )
 on conflict (attachment_id, source_span)
 where source_span <> ''
@@ -194,7 +206,9 @@ do update set
 	source_artifact_id = excluded.source_artifact_id,
 	agency = excluded.agency,
 	source = excluded.source,
-	offering_type = excluded.offering_type,
+	application_unit_label = excluded.application_unit_label,
+	supply_method = excluded.supply_method,
+	application_category = excluded.application_category,
 	supply_category = excluded.supply_category,
 	list_no = excluded.list_no,
 	district = excluded.district,
@@ -215,9 +229,18 @@ do update set
 	deposit_krw = excluded.deposit_krw,
 	jeonse_deposit_text = excluded.jeonse_deposit_text,
 	jeonse_deposit_krw = excluded.jeonse_deposit_krw,
+	contract_deposit_krw = excluded.contract_deposit_krw,
+	balance_payment_krw = excluded.balance_payment_krw,
 	monthly_rent_text = excluded.monthly_rent_text,
 	monthly_rent_krw = excluded.monthly_rent_krw,
 	supply_count = excluded.supply_count,
+	reserved_count = excluded.reserved_count,
+	gender_requirement = excluded.gender_requirement,
+	occupancy_type = excluded.occupancy_type,
+	capacity_persons = excluded.capacity_persons,
+	dormitory_fee_krw = excluded.dormitory_fee_krw,
+	heating_method = excluded.heating_method,
+	move_in_start_text = excluded.move_in_start_text,
 	direction = excluded.direction,
 	status = excluded.status,
 	source_sheet = excluded.source_sheet,
@@ -255,46 +278,39 @@ set qa_status = case
 		and attachment_id is not null
 		and source_artifact_id is not null
 		and trim(source_span) <> ''
-		and offering_type in ('unit', 'group')
+		and (
+			trim(application_unit_label) <> ''
+			or coalesce(trim(unit_no), '') <> ''
+			or trim(coalesce(nullif(housing_name, ''), complex_name)) <> ''
+		)
+		and (
+			coalesce(trim(unit_no), '') <> ''
+			or (
+				supply_count is not null
+				and supply_count > 0
+			)
+		)
 		and (
 			(
-				offering_type = 'unit'
-				and coalesce(trim(unit_no), '') <> ''
-				and trim(address) <> ''
-				and exclusive_area_m2 is not null
+				exclusive_area_m2 is not null
 				and exclusive_area_m2 > 0
-				and (
-					(
-						deposit_krw is not null
-						and deposit_krw >= 0
-						and monthly_rent_krw is not null
-						and monthly_rent_krw >= 0
-					)
-					or (
-						jeonse_deposit_krw is not null
-						and jeonse_deposit_krw >= 0
-					)
-				)
+			)
+			or trim(occupancy_type) <> ''
+		)
+		and (
+			(
+				deposit_krw is not null
+				and deposit_krw >= 0
+				and monthly_rent_krw is not null
+				and monthly_rent_krw >= 0
 			)
 			or (
-				offering_type = 'group'
-				and supply_count is not null
-				and supply_count > 0
-				and trim(coalesce(nullif(housing_name, ''), complex_name)) <> ''
-				and exclusive_area_m2 is not null
-				and exclusive_area_m2 > 0
-				and (
-					(
-						deposit_krw is not null
-						and deposit_krw >= 0
-						and monthly_rent_krw is not null
-						and monthly_rent_krw >= 0
-					)
-					or (
-						jeonse_deposit_krw is not null
-						and jeonse_deposit_krw >= 0
-					)
-				)
+				jeonse_deposit_krw is not null
+				and jeonse_deposit_krw >= 0
+			)
+			or (
+				dormitory_fee_krw is not null
+				and dormitory_fee_krw >= 0
 			)
 		)
 	then 'approved'
@@ -314,7 +330,9 @@ select
 	id,
 	agency,
 	source,
-	offering_type,
+	application_unit_label,
+	supply_method,
+	application_category,
 	supply_category,
 	list_no,
 	district,
@@ -329,9 +347,18 @@ select
 	deposit_krw,
 	jeonse_deposit_text,
 	jeonse_deposit_krw,
+	contract_deposit_krw,
+	balance_payment_krw,
 	monthly_rent_text,
 	monthly_rent_krw,
 	supply_count,
+	reserved_count,
+	gender_requirement,
+	occupancy_type,
+	capacity_persons,
+	dormitory_fee_krw,
+	heating_method,
+	move_in_start_text,
 	source_sheet,
 	source_row,
 	source_span,

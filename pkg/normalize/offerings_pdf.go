@@ -81,17 +81,17 @@ func buildPDFOffering(artifact extraction.ExtractedArtifact, address string, uni
 	depositText := values[valueOffset+4]
 	rentText := values[valueOffset+5]
 	return OfferingCandidate{
-		OfferingType:    OfferingTypeUnit,
-		Address:         address,
-		District:        districtFromAddress(address),
-		UnitNo:          unitNo,
-		SupplyCount:     intPtr(1),
-		ExclusiveAreaM2: parseFloatPtr(values[valueOffset+2]),
-		DepositText:     depositText,
-		DepositKRW:      parseKRWPtr(depositText),
-		MonthlyRentText: rentText,
-		MonthlyRentKRW:  parseKRWPtr(rentText),
-		SourceSpan:      artifact.SourceSpan,
+		Address:              address,
+		District:             districtFromAddress(address),
+		UnitNo:               unitNo,
+		ApplicationUnitLabel: buildApplicationUnitLabel("", unitNo, parseFloatPtr(values[valueOffset+2]), "", ""),
+		SupplyCount:          intPtr(1),
+		ExclusiveAreaM2:      parseFloatPtr(values[valueOffset+2]),
+		DepositText:          depositText,
+		DepositKRW:           parseKRWPtr(depositText),
+		MonthlyRentText:      rentText,
+		MonthlyRentKRW:       parseKRWPtr(rentText),
+		SourceSpan:           artifact.SourceSpan,
 		RawRow: map[string]any{
 			"source": source,
 			"tokens": values,

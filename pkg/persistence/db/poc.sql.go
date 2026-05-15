@@ -211,7 +211,9 @@ select
 	id,
 	agency,
 	source,
-	offering_type,
+	application_unit_label,
+	supply_method,
+	application_category,
 	supply_category,
 	list_no,
 	district,
@@ -226,9 +228,18 @@ select
 	deposit_krw,
 	jeonse_deposit_text,
 	jeonse_deposit_krw,
+	contract_deposit_krw,
+	balance_payment_krw,
 	monthly_rent_text,
 	monthly_rent_krw,
 	supply_count,
+	reserved_count,
+	gender_requirement,
+	occupancy_type,
+	capacity_persons,
+	dormitory_fee_krw,
+	heating_method,
+	move_in_start_text,
 	source_sheet,
 	source_row,
 	source_span,
@@ -245,31 +256,42 @@ type ListOfferingsParams struct {
 }
 
 type ListOfferingsRow struct {
-	ID                int64          `json:"id"`
-	Agency            string         `json:"agency"`
-	Source            string         `json:"source"`
-	OfferingType      string         `json:"offering_type"`
-	SupplyCategory    string         `json:"supply_category"`
-	ListNo            string         `json:"list_no"`
-	District          string         `json:"district"`
-	Address           string         `json:"address"`
-	HousingName       string         `json:"housing_name"`
-	ComplexName       string         `json:"complex_name"`
-	BuildingName      string         `json:"building_name"`
-	UnitNo            pgtype.Text    `json:"unit_no"`
-	UnitType          string         `json:"unit_type"`
-	ExclusiveAreaM2   pgtype.Numeric `json:"exclusive_area_m2"`
-	DepositText       string         `json:"deposit_text"`
-	DepositKrw        pgtype.Int8    `json:"deposit_krw"`
-	JeonseDepositText string         `json:"jeonse_deposit_text"`
-	JeonseDepositKrw  pgtype.Int8    `json:"jeonse_deposit_krw"`
-	MonthlyRentText   string         `json:"monthly_rent_text"`
-	MonthlyRentKrw    pgtype.Int8    `json:"monthly_rent_krw"`
-	SupplyCount       pgtype.Int4    `json:"supply_count"`
-	SourceSheet       string         `json:"source_sheet"`
-	SourceRow         pgtype.Int4    `json:"source_row"`
-	SourceSpan        string         `json:"source_span"`
-	QaStatus          string         `json:"qa_status"`
+	ID                   int64          `json:"id"`
+	Agency               string         `json:"agency"`
+	Source               string         `json:"source"`
+	ApplicationUnitLabel string         `json:"application_unit_label"`
+	SupplyMethod         string         `json:"supply_method"`
+	ApplicationCategory  string         `json:"application_category"`
+	SupplyCategory       string         `json:"supply_category"`
+	ListNo               string         `json:"list_no"`
+	District             string         `json:"district"`
+	Address              string         `json:"address"`
+	HousingName          string         `json:"housing_name"`
+	ComplexName          string         `json:"complex_name"`
+	BuildingName         string         `json:"building_name"`
+	UnitNo               pgtype.Text    `json:"unit_no"`
+	UnitType             string         `json:"unit_type"`
+	ExclusiveAreaM2      pgtype.Numeric `json:"exclusive_area_m2"`
+	DepositText          string         `json:"deposit_text"`
+	DepositKrw           pgtype.Int8    `json:"deposit_krw"`
+	JeonseDepositText    string         `json:"jeonse_deposit_text"`
+	JeonseDepositKrw     pgtype.Int8    `json:"jeonse_deposit_krw"`
+	ContractDepositKrw   pgtype.Int8    `json:"contract_deposit_krw"`
+	BalancePaymentKrw    pgtype.Int8    `json:"balance_payment_krw"`
+	MonthlyRentText      string         `json:"monthly_rent_text"`
+	MonthlyRentKrw       pgtype.Int8    `json:"monthly_rent_krw"`
+	SupplyCount          pgtype.Int4    `json:"supply_count"`
+	ReservedCount        pgtype.Int4    `json:"reserved_count"`
+	GenderRequirement    string         `json:"gender_requirement"`
+	OccupancyType        string         `json:"occupancy_type"`
+	CapacityPersons      pgtype.Int4    `json:"capacity_persons"`
+	DormitoryFeeKrw      pgtype.Int8    `json:"dormitory_fee_krw"`
+	HeatingMethod        string         `json:"heating_method"`
+	MoveInStartText      string         `json:"move_in_start_text"`
+	SourceSheet          string         `json:"source_sheet"`
+	SourceRow            pgtype.Int4    `json:"source_row"`
+	SourceSpan           string         `json:"source_span"`
+	QaStatus             string         `json:"qa_status"`
 }
 
 func (q *Queries) ListOfferings(ctx context.Context, arg ListOfferingsParams) ([]ListOfferingsRow, error) {
@@ -285,7 +307,9 @@ func (q *Queries) ListOfferings(ctx context.Context, arg ListOfferingsParams) ([
 			&i.ID,
 			&i.Agency,
 			&i.Source,
-			&i.OfferingType,
+			&i.ApplicationUnitLabel,
+			&i.SupplyMethod,
+			&i.ApplicationCategory,
 			&i.SupplyCategory,
 			&i.ListNo,
 			&i.District,
@@ -300,9 +324,18 @@ func (q *Queries) ListOfferings(ctx context.Context, arg ListOfferingsParams) ([
 			&i.DepositKrw,
 			&i.JeonseDepositText,
 			&i.JeonseDepositKrw,
+			&i.ContractDepositKrw,
+			&i.BalancePaymentKrw,
 			&i.MonthlyRentText,
 			&i.MonthlyRentKrw,
 			&i.SupplyCount,
+			&i.ReservedCount,
+			&i.GenderRequirement,
+			&i.OccupancyType,
+			&i.CapacityPersons,
+			&i.DormitoryFeeKrw,
+			&i.HeatingMethod,
+			&i.MoveInStartText,
 			&i.SourceSheet,
 			&i.SourceRow,
 			&i.SourceSpan,
@@ -402,46 +435,39 @@ set qa_status = case
 		and attachment_id is not null
 		and source_artifact_id is not null
 		and trim(source_span) <> ''
-		and offering_type in ('unit', 'group')
+		and (
+			trim(application_unit_label) <> ''
+			or coalesce(trim(unit_no), '') <> ''
+			or trim(coalesce(nullif(housing_name, ''), complex_name)) <> ''
+		)
+		and (
+			coalesce(trim(unit_no), '') <> ''
+			or (
+				supply_count is not null
+				and supply_count > 0
+			)
+		)
 		and (
 			(
-				offering_type = 'unit'
-				and coalesce(trim(unit_no), '') <> ''
-				and trim(address) <> ''
-				and exclusive_area_m2 is not null
+				exclusive_area_m2 is not null
 				and exclusive_area_m2 > 0
-				and (
-					(
-						deposit_krw is not null
-						and deposit_krw >= 0
-						and monthly_rent_krw is not null
-						and monthly_rent_krw >= 0
-					)
-					or (
-						jeonse_deposit_krw is not null
-						and jeonse_deposit_krw >= 0
-					)
-				)
+			)
+			or trim(occupancy_type) <> ''
+		)
+		and (
+			(
+				deposit_krw is not null
+				and deposit_krw >= 0
+				and monthly_rent_krw is not null
+				and monthly_rent_krw >= 0
 			)
 			or (
-				offering_type = 'group'
-				and supply_count is not null
-				and supply_count > 0
-				and trim(coalesce(nullif(housing_name, ''), complex_name)) <> ''
-				and exclusive_area_m2 is not null
-				and exclusive_area_m2 > 0
-				and (
-					(
-						deposit_krw is not null
-						and deposit_krw >= 0
-						and monthly_rent_krw is not null
-						and monthly_rent_krw >= 0
-					)
-					or (
-						jeonse_deposit_krw is not null
-						and jeonse_deposit_krw >= 0
-					)
-				)
+				jeonse_deposit_krw is not null
+				and jeonse_deposit_krw >= 0
+			)
+			or (
+				dormitory_fee_krw is not null
+				and dormitory_fee_krw >= 0
 			)
 		)
 	then 'approved'
@@ -535,7 +561,9 @@ insert into offerings (
 	source_artifact_id,
 	agency,
 	source,
-	offering_type,
+	application_unit_label,
+	supply_method,
+	application_category,
 	supply_category,
 	list_no,
 	district,
@@ -556,9 +584,18 @@ insert into offerings (
 	deposit_krw,
 	jeonse_deposit_text,
 	jeonse_deposit_krw,
+	contract_deposit_krw,
+	balance_payment_krw,
 	monthly_rent_text,
 	monthly_rent_krw,
 	supply_count,
+	reserved_count,
+	gender_requirement,
+	occupancy_type,
+	capacity_persons,
+	dormitory_fee_krw,
+	heating_method,
+	move_in_start_text,
 	direction,
 	status,
 	source_sheet,
@@ -574,7 +611,8 @@ values (
 	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 	$11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
 	$21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-	$31, $32, $33, $34, $35, $36, $37, $38, $39
+	$31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
+	$41, $42, $43, $44, $45, $46, $47, $48, $49, $50
 )
 on conflict (attachment_id, source_span)
 where source_span <> ''
@@ -582,7 +620,9 @@ do update set
 	source_artifact_id = excluded.source_artifact_id,
 	agency = excluded.agency,
 	source = excluded.source,
-	offering_type = excluded.offering_type,
+	application_unit_label = excluded.application_unit_label,
+	supply_method = excluded.supply_method,
+	application_category = excluded.application_category,
 	supply_category = excluded.supply_category,
 	list_no = excluded.list_no,
 	district = excluded.district,
@@ -603,9 +643,18 @@ do update set
 	deposit_krw = excluded.deposit_krw,
 	jeonse_deposit_text = excluded.jeonse_deposit_text,
 	jeonse_deposit_krw = excluded.jeonse_deposit_krw,
+	contract_deposit_krw = excluded.contract_deposit_krw,
+	balance_payment_krw = excluded.balance_payment_krw,
 	monthly_rent_text = excluded.monthly_rent_text,
 	monthly_rent_krw = excluded.monthly_rent_krw,
 	supply_count = excluded.supply_count,
+	reserved_count = excluded.reserved_count,
+	gender_requirement = excluded.gender_requirement,
+	occupancy_type = excluded.occupancy_type,
+	capacity_persons = excluded.capacity_persons,
+	dormitory_fee_krw = excluded.dormitory_fee_krw,
+	heating_method = excluded.heating_method,
+	move_in_start_text = excluded.move_in_start_text,
 	direction = excluded.direction,
 	status = excluded.status,
 	source_sheet = excluded.source_sheet,
@@ -619,45 +668,56 @@ returning id
 `
 
 type UpsertOfferingParams struct {
-	NoticeID          pgtype.Int8    `json:"notice_id"`
-	AttachmentID      pgtype.Int8    `json:"attachment_id"`
-	SourceArtifactID  pgtype.Int8    `json:"source_artifact_id"`
-	Agency            string         `json:"agency"`
-	Source            string         `json:"source"`
-	OfferingType      string         `json:"offering_type"`
-	SupplyCategory    string         `json:"supply_category"`
-	ListNo            string         `json:"list_no"`
-	District          string         `json:"district"`
-	Address           string         `json:"address"`
-	LegalDong         string         `json:"legal_dong"`
-	AddressDetail     string         `json:"address_detail"`
-	HousingName       string         `json:"housing_name"`
-	ComplexName       string         `json:"complex_name"`
-	BuildingName      string         `json:"building_name"`
-	UnitNo            pgtype.Text    `json:"unit_no"`
-	Floor             pgtype.Int4    `json:"floor"`
-	FloorNo           pgtype.Int4    `json:"floor_no"`
-	UnitType          string         `json:"unit_type"`
-	StructureType     string         `json:"structure_type"`
-	ExclusiveAreaM2   pgtype.Numeric `json:"exclusive_area_m2"`
-	AreaPyeong        pgtype.Numeric `json:"area_pyeong"`
-	DepositText       string         `json:"deposit_text"`
-	DepositKrw        pgtype.Int8    `json:"deposit_krw"`
-	JeonseDepositText string         `json:"jeonse_deposit_text"`
-	JeonseDepositKrw  pgtype.Int8    `json:"jeonse_deposit_krw"`
-	MonthlyRentText   string         `json:"monthly_rent_text"`
-	MonthlyRentKrw    pgtype.Int8    `json:"monthly_rent_krw"`
-	SupplyCount       pgtype.Int4    `json:"supply_count"`
-	Direction         string         `json:"direction"`
-	Status            string         `json:"status"`
-	SourceSheet       string         `json:"source_sheet"`
-	SourceRow         pgtype.Int4    `json:"source_row"`
-	SourceCell        string         `json:"source_cell"`
-	SourcePage        pgtype.Int4    `json:"source_page"`
-	SourceSpan        string         `json:"source_span"`
-	RawRow            []byte         `json:"raw_row"`
-	Confidence        pgtype.Numeric `json:"confidence"`
-	QaStatus          string         `json:"qa_status"`
+	NoticeID             pgtype.Int8    `json:"notice_id"`
+	AttachmentID         pgtype.Int8    `json:"attachment_id"`
+	SourceArtifactID     pgtype.Int8    `json:"source_artifact_id"`
+	Agency               string         `json:"agency"`
+	Source               string         `json:"source"`
+	ApplicationUnitLabel string         `json:"application_unit_label"`
+	SupplyMethod         string         `json:"supply_method"`
+	ApplicationCategory  string         `json:"application_category"`
+	SupplyCategory       string         `json:"supply_category"`
+	ListNo               string         `json:"list_no"`
+	District             string         `json:"district"`
+	Address              string         `json:"address"`
+	LegalDong            string         `json:"legal_dong"`
+	AddressDetail        string         `json:"address_detail"`
+	HousingName          string         `json:"housing_name"`
+	ComplexName          string         `json:"complex_name"`
+	BuildingName         string         `json:"building_name"`
+	UnitNo               pgtype.Text    `json:"unit_no"`
+	Floor                pgtype.Int4    `json:"floor"`
+	FloorNo              pgtype.Int4    `json:"floor_no"`
+	UnitType             string         `json:"unit_type"`
+	StructureType        string         `json:"structure_type"`
+	ExclusiveAreaM2      pgtype.Numeric `json:"exclusive_area_m2"`
+	AreaPyeong           pgtype.Numeric `json:"area_pyeong"`
+	DepositText          string         `json:"deposit_text"`
+	DepositKrw           pgtype.Int8    `json:"deposit_krw"`
+	JeonseDepositText    string         `json:"jeonse_deposit_text"`
+	JeonseDepositKrw     pgtype.Int8    `json:"jeonse_deposit_krw"`
+	ContractDepositKrw   pgtype.Int8    `json:"contract_deposit_krw"`
+	BalancePaymentKrw    pgtype.Int8    `json:"balance_payment_krw"`
+	MonthlyRentText      string         `json:"monthly_rent_text"`
+	MonthlyRentKrw       pgtype.Int8    `json:"monthly_rent_krw"`
+	SupplyCount          pgtype.Int4    `json:"supply_count"`
+	ReservedCount        pgtype.Int4    `json:"reserved_count"`
+	GenderRequirement    string         `json:"gender_requirement"`
+	OccupancyType        string         `json:"occupancy_type"`
+	CapacityPersons      pgtype.Int4    `json:"capacity_persons"`
+	DormitoryFeeKrw      pgtype.Int8    `json:"dormitory_fee_krw"`
+	HeatingMethod        string         `json:"heating_method"`
+	MoveInStartText      string         `json:"move_in_start_text"`
+	Direction            string         `json:"direction"`
+	Status               string         `json:"status"`
+	SourceSheet          string         `json:"source_sheet"`
+	SourceRow            pgtype.Int4    `json:"source_row"`
+	SourceCell           string         `json:"source_cell"`
+	SourcePage           pgtype.Int4    `json:"source_page"`
+	SourceSpan           string         `json:"source_span"`
+	RawRow               []byte         `json:"raw_row"`
+	Confidence           pgtype.Numeric `json:"confidence"`
+	QaStatus             string         `json:"qa_status"`
 }
 
 func (q *Queries) UpsertOffering(ctx context.Context, arg UpsertOfferingParams) (int64, error) {
@@ -667,7 +727,9 @@ func (q *Queries) UpsertOffering(ctx context.Context, arg UpsertOfferingParams) 
 		arg.SourceArtifactID,
 		arg.Agency,
 		arg.Source,
-		arg.OfferingType,
+		arg.ApplicationUnitLabel,
+		arg.SupplyMethod,
+		arg.ApplicationCategory,
 		arg.SupplyCategory,
 		arg.ListNo,
 		arg.District,
@@ -688,9 +750,18 @@ func (q *Queries) UpsertOffering(ctx context.Context, arg UpsertOfferingParams) 
 		arg.DepositKrw,
 		arg.JeonseDepositText,
 		arg.JeonseDepositKrw,
+		arg.ContractDepositKrw,
+		arg.BalancePaymentKrw,
 		arg.MonthlyRentText,
 		arg.MonthlyRentKrw,
 		arg.SupplyCount,
+		arg.ReservedCount,
+		arg.GenderRequirement,
+		arg.OccupancyType,
+		arg.CapacityPersons,
+		arg.DormitoryFeeKrw,
+		arg.HeatingMethod,
+		arg.MoveInStartText,
 		arg.Direction,
 		arg.Status,
 		arg.SourceSheet,

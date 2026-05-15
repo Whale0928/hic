@@ -51,6 +51,50 @@ func TestInferOfferingsFromXLSXRows_당첨자명단헤더는제외한다(t *test
 	}
 }
 
+func TestInferOfferingsFromXLSXRows_동호수없는신청가능단위를공급항목후보로변환한다(t *testing.T) {
+	artifacts := []extraction.ExtractedArtifact{
+		xlsxRow("공급현황", 1, []string{"단지명", "전용면적", "유형", "공급호수", "예비", "전세금액(천원)", "계약금(계약시)", "잔금(입주시)", "성별", "주택유형", "기숙사비", "난방방식", "입주시작(예정)"}),
+		xlsxRow("공급현황", 2, []string{"세곡2지구", "59.00", "일반", "34", "5", "514,020", "51,402", "462,618", "여성", "원룸형 1인실", "120,000", "지역난방", "2026.12"}),
+	}
+
+	offerings := InferOfferingsFromXLSXRows(artifacts)
+
+	if len(offerings) != 1 {
+		t.Fatalf("len(offerings) = %d, want 1: %+v", len(offerings), offerings)
+	}
+	got := offerings[0]
+	if got.UnitNo != "" {
+		t.Fatalf("UnitNo = %q, want empty", got.UnitNo)
+	}
+	if got.ApplicationUnitLabel != "세곡2지구 59㎡ 일반 여성" {
+		t.Fatalf("ApplicationUnitLabel = %q", got.ApplicationUnitLabel)
+	}
+	if got.SupplyCount == nil || *got.SupplyCount != 34 {
+		t.Fatalf("SupplyCount = %v", got.SupplyCount)
+	}
+	if got.ReservedCount == nil || *got.ReservedCount != 5 {
+		t.Fatalf("ReservedCount = %v", got.ReservedCount)
+	}
+	if got.JeonseDepositKRW == nil || *got.JeonseDepositKRW != 514020000 {
+		t.Fatalf("JeonseDepositKRW = %v", got.JeonseDepositKRW)
+	}
+	if got.ContractDepositKRW == nil || *got.ContractDepositKRW != 51402000 {
+		t.Fatalf("ContractDepositKRW = %v", got.ContractDepositKRW)
+	}
+	if got.BalancePaymentKRW == nil || *got.BalancePaymentKRW != 462618000 {
+		t.Fatalf("BalancePaymentKRW = %v", got.BalancePaymentKRW)
+	}
+	if got.GenderRequirement != "여성" || got.OccupancyType != "원룸형 1인실" {
+		t.Fatalf("application attributes = %+v", got)
+	}
+	if got.DormitoryFeeKRW == nil || *got.DormitoryFeeKRW != 120000 {
+		t.Fatalf("DormitoryFeeKRW = %v", got.DormitoryFeeKRW)
+	}
+	if got.HeatingMethod != "지역난방" || got.MoveInStartText != "2026.12" {
+		t.Fatalf("facility/schedule attributes = %+v", got)
+	}
+}
+
 func xlsxRow(sheet string, row int, cells []string) extraction.ExtractedArtifact {
 	return extraction.ExtractedArtifact{
 		Type:          extraction.ArtifactTypeXLSXRow,

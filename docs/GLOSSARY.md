@@ -28,12 +28,10 @@
 | 품질 검증 | Quality Assurance | `qa` | 샘플 기반 회귀검증, 필드 누락률, source span, 중복 저장 여부를 검증하는 단계. |
 | 단지 | Complex | `complex`, `complex_name` | 하나 이상의 건물 또는 공급항목을 묶는 공급/관리 단위. SH 엑셀에서는 주택명과 겹칠 수 있다. |
 | 건물 | Building | `building`, `building_name` | 물리적인 건축물 또는 동. 하나의 건물 안에 여러 공급항목/호실이 들어갈 수 있다. |
-| 공급항목 | Offering | `offering` | HIC의 핵심 정규화 단위. 공고 표의 한 행을 의미하며, 개별 동호가 공개된 행과 모집호수만 공개된 그룹 행을 모두 포함한다. |
-| 개별공급항목 | Unit Offering | `offering_type=unit` | 동호수가 공개된 공급항목. 예: `401호`, `502호`처럼 실제 호실을 특정할 수 있는 행. |
-| 그룹공급항목 | Group Offering | `offering_type=group` | 동호수는 아직 공개되지 않았지만 단지/면적/유형/모집호수/금액으로 공급 단위를 나타내는 행. 장기전세처럼 동호가 추첨 후 배정되는 공고에서 사용한다. |
-| 주택 | Housing Unit | `offering`, `unit` | 사용자가 거주/계약 대상으로 이해하는 주거 단위. 구현상으로는 공급항목의 한 형태이며, 공고 시점에 동호수가 공개되지 않을 수 있다. |
-| 공급항목 유형 | Offering Type | `offering_type` | 공급항목이 개별공급항목인지 그룹공급항목인지 구분하는 값. 예: `unit`, `group`. |
-| 호실 | Unit Number | `unit_no` | 공급항목을 건물 안에서 식별하는 동호수. 개별공급항목에는 있고, 그룹공급항목에는 비어 있을 수 있다. 예: `0404`. |
+| 공급항목 | Offering | `offering` | HIC의 핵심 정규화 단위. 사용자가 신청 화면이나 공고 표에서 선택할 수 있는 신청 가능 단위다. 동호수가 공개되면 개별 호실을, 공개되지 않으면 단지/면적/유형/모집호수/금액 조합을 표현한다. |
+| 신청 가능 단위명 | Application Unit Label | `application_unit_label` | 사용자가 이해할 수 있는 공급항목 대표 이름. 예: `세곡2지구 59㎡ 일반 여성`, `정릉 희망하우징 1인실`. |
+| 주택 | Housing Unit | `offering`, `unit` | 사용자가 거주/계약 대상으로 이해하는 주거 단위. 구현상 최종 조회 단위는 공급항목이며, 공고 시점에 동호수가 공개되지 않을 수 있다. |
+| 호실 | Unit Number | `unit_no` | 공급항목을 건물 안에서 식별하는 동호수. 동호수가 추후 배정되는 공고에서는 비어 있을 수 있다. 예: `0404`. |
 | 층 | Floor Number | `floor_no` | 주택이 위치한 층. 호실에서 추정할 수도 있고 별도 컬럼으로 올 수도 있다. |
 | 주택명 | Housing Name | `housing_name` | 원본의 주택명 또는 공급 대상명. 예: `Oaktreevil DR2`. 단지명과 동일하게 쓰일 수 있다. |
 | 동/건물명 | Building Name | `building_name` | 동, 건물명, 주건축물명 등 건물 식별값. 원본에 없으면 비워둘 수 있다. |
@@ -42,7 +40,10 @@
 | 법정동 | Legal Dong | `legal_dong` | 주소에서 추출 가능한 법정동 후보. 예: 대림동. |
 | 상세주소 | Address Detail | `address_detail` | 번지, 건물명, 괄호 안 주소 등 상세 주소 정보. |
 | 공급구분 | Supply Category | `supply_category` | 신규공급, 재공급 등 공급 상태/유형. |
-| 공급호수 | Supply Count | `supply_count` | 그룹공급항목이 대표하는 모집 호수 또는 세대 수. 개별공급항목은 보통 `1`이다. |
+| 공급방법 | Supply Method | `supply_method` | 신규공급, 재공급, 잔여세대, 예비입주자 등 공급 방식. 원본이 공급구분과 구분하지 않으면 비워둘 수 있다. |
+| 신청유형 | Application Category | `application_category` | 일반, 주거약자, 우선공급, 남성, 여성처럼 신청 자격이나 선택 단위를 가르는 유형. |
+| 공급호수 | Supply Count | `supply_count` | 해당 공급항목이 대표하는 모집 호수 또는 세대 수. 동호수가 공개된 공급항목은 보통 `1`이다. |
+| 예비호수 | Reserved Count | `reserved_count` | 예비자 또는 예비 공급 수량이 별도로 공지될 때 저장하는 수. |
 | 목록번호 | List Number | `list_no` | 첨부 주택목록에서 사용하는 행 번호. |
 | 주택형 | Unit Type | `unit_type` | 27A, 40A 등 면적/구조/타입을 나타내는 원본 값. |
 | 주택구조 | Structure Type | `structure_type` | 개방형원룸, 분리형원룸 등 구조 유형. |
@@ -52,6 +53,12 @@
 | 임대보증금 | Deposit | `deposit_krw` | 원 단위 임대보증금. 문자열이 아니라 숫자 필드로 저장한다. |
 | 월임대료 | Monthly Rent | `monthly_rent_krw` | 원 단위 월임대료. 문자열이 아니라 숫자 필드로 저장한다. |
 | 전세금액 | Jeonse Deposit | `jeonse_deposit_krw` | 장기전세 등에서 월임대료 없이 전세보증금 성격으로 제시되는 금액. 원 단위 숫자 필드로 저장한다. |
+| 계약금 | Contract Deposit | `contract_deposit_krw` | 계약 시 납부하는 금액. 장기전세 공고에서는 전세금액의 10%처럼 제시될 수 있다. |
+| 잔금 | Balance Payment | `balance_payment_krw` | 입주 시 납부하는 잔금. 장기전세 공고에서는 전세금액의 90%처럼 제시될 수 있다. |
+| 성별 조건 | Gender Requirement | `gender_requirement` | 남성, 여성처럼 신청 가능 단위를 성별로 나누는 조건. |
+| 거주/실 유형 | Occupancy Type | `occupancy_type` | 원룸형, 1인실, 2인실처럼 거주 형태를 나타내는 값. |
+| 수용 인원 | Capacity Persons | `capacity_persons` | 1인실, 2인실 등에서 파생되는 수용 인원. |
+| 기숙사비 | Dormitory Fee | `dormitory_fee_krw` | 희망하우징 같은 공공기숙사에서 보증금/월임대료 대신 또는 별도로 제시되는 기숙사비. |
 | 상호전환제도 | Rent Conversion Rule | `rent_conversion_rule` | 월임대료를 보증금으로, 또는 보증금을 월임대료로 전환하는 규칙. |
 | 월임대료 보증금 전환 가능 여부 | Rent-to-Deposit Allowed | `rent_to_deposit_allowed` | 월임대료 일부를 보증금으로 전환할 수 있는지 여부. |
 | 월임대료 보증금 전환 최대비율 | Rent-to-Deposit Max Ratio | `rent_to_deposit_max_ratio` | 월임대료 중 최대 몇 %를 보증금으로 전환 가능한지. 예: `0.60`. |

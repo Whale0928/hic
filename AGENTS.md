@@ -35,7 +35,7 @@ This file is the first reference for any AI agent working in this repository.
 ## Domain Definition
 
 The user now defines the normalized end-user grain as `공급항목(Offering)`.
-It can represent a concrete unit/room when `unit_no` is known, or a grouped supply row when a notice publishes only complex/type/area/count/price and assigns unit numbers later.
+It represents one application-selectable unit. `unit_no` is nullable because some notices accept applications by complex, area, category, gender, count, and price before assigning exact units later.
 
 Core hierarchy:
 
@@ -43,7 +43,7 @@ Core hierarchy:
 Agency -> Board -> Notice -> Attachment -> Extracted Artifact -> Offering
 ```
 
-`Offering` is the core end-user data grain. Unit-level or group-level information often lives inside XLSX/PDF/HWP attachments, not in the notice HTML.
+`Offering` is the core end-user data grain. Application-selectable information often lives inside XLSX/PDF/HWP attachments, not in the notice HTML.
 
 ## Target Stack
 
