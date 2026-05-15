@@ -205,7 +205,7 @@ attachments=728
 previews=0
 downloads=0
 xlsx_rows=0
-units=0
+offerings=0
 errors=0
 ```
 
@@ -219,7 +219,7 @@ attachments=17
 previews=0
 downloads=17
 xlsx_rows=2702
-units=776
+offerings=776
 pdf_texts=8
 pdf_failed=0
 unsupported=3
@@ -237,11 +237,11 @@ Known notice examples:
 Known XLSX unit candidates:
 
 ```text
-296353 / file_seq 57 / 주택목록: 751 units
-296598 / file_seq 2 / 주택목록: 25 units
-296353 / file_seq 54 / 당첨자 명단: 0 units
-296353 / file_seq 55 / 예비자 명단: 0 units
-296353 / file_seq 56 / 커트라인: 0 units
+296353 / file_seq 57 / 주택목록: 751 offerings
+296598 / file_seq 2 / 주택목록: 25 offerings
+296353 / file_seq 54 / 당첨자 명단: 0 offerings
+296353 / file_seq 55 / 예비자 명단: 0 offerings
+296353 / file_seq 56 / 커트라인: 0 offerings
 ```
 
 Important lesson:

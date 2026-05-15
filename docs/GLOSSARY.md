@@ -22,22 +22,27 @@
 | 발견 | Discovery | `discovery` | 게시판에서 모집공고와 첨부 메타를 식별하는 단계. 비모집 게시글은 이 단계에서 폐기한다. |
 | 추출 | Extraction | `extraction` | PDF/XLSX/HWP/HTML에서 텍스트, 페이지, 행, 표 후보를 기계적으로 뽑는 단계. |
 | 추출 산출물 | Extracted Artifact | `artifact` | 추출 단계가 만든 텍스트, 행 JSON, 페이지 텍스트, 표 후보 등. |
-| 정규화 | Normalize | `normalize`, `normalization` | 추출 산출물을 주소, 주택, 가격, 일정, 상호전환 등 도메인 필드로 변환하는 단계. |
+| 정규화 | Normalize | `normalize`, `normalization` | 추출 산출물을 주소, 공급항목, 가격, 일정, 상호전환 등 도메인 필드로 변환하는 단계. |
 | LLM 보정 | LLM Assist | `llm_assist` | deterministic parser가 실패하거나 confidence가 낮은 구간을 LLM으로 보정하는 단계. |
 | 워크플로우 | Workflow | `workflow` | discovery → extraction → normalize → llm assist → QA gate를 조율하는 실행 흐름. |
 | 품질 검증 | Quality Assurance | `qa` | 샘플 기반 회귀검증, 필드 누락률, source span, 중복 저장 여부를 검증하는 단계. |
-| 단지 | Complex | `complex`, `complex_name` | 하나 이상의 건물 또는 주택을 묶는 공급/관리 단위. SH 엑셀에서는 주택명과 겹칠 수 있다. |
-| 건물 | Building | `building`, `building_name` | 물리적인 건축물 또는 동. 하나의 건물 안에 여러 주택/호실이 들어갈 수 있다. |
-| 주택 | Housing Unit | `housing_unit`, `unit` | HIC의 핵심 개별 정보 단위. 건물 안의 각 호실 하나를 주택으로 표현한다. |
-| 호실 | Unit Number | `unit_no` | 주택을 건물 안에서 식별하는 번호. 예: `0404`. |
+| 단지 | Complex | `complex`, `complex_name` | 하나 이상의 건물 또는 공급항목을 묶는 공급/관리 단위. SH 엑셀에서는 주택명과 겹칠 수 있다. |
+| 건물 | Building | `building`, `building_name` | 물리적인 건축물 또는 동. 하나의 건물 안에 여러 공급항목/호실이 들어갈 수 있다. |
+| 공급항목 | Offering | `offering` | HIC의 핵심 정규화 단위. 공고 표의 한 행을 의미하며, 개별 동호가 공개된 행과 모집호수만 공개된 그룹 행을 모두 포함한다. |
+| 개별공급항목 | Unit Offering | `offering_type=unit` | 동호수가 공개된 공급항목. 예: `401호`, `502호`처럼 실제 호실을 특정할 수 있는 행. |
+| 그룹공급항목 | Group Offering | `offering_type=group` | 동호수는 아직 공개되지 않았지만 단지/면적/유형/모집호수/금액으로 공급 단위를 나타내는 행. 장기전세처럼 동호가 추첨 후 배정되는 공고에서 사용한다. |
+| 주택 | Housing Unit | `offering`, `unit` | 사용자가 거주/계약 대상으로 이해하는 주거 단위. 구현상으로는 공급항목의 한 형태이며, 공고 시점에 동호수가 공개되지 않을 수 있다. |
+| 공급항목 유형 | Offering Type | `offering_type` | 공급항목이 개별공급항목인지 그룹공급항목인지 구분하는 값. 예: `unit`, `group`. |
+| 호실 | Unit Number | `unit_no` | 공급항목을 건물 안에서 식별하는 동호수. 개별공급항목에는 있고, 그룹공급항목에는 비어 있을 수 있다. 예: `0404`. |
 | 층 | Floor Number | `floor_no` | 주택이 위치한 층. 호실에서 추정할 수도 있고 별도 컬럼으로 올 수도 있다. |
-| 주택명 | Housing Name | `housing_name` | 엑셀 원본의 주택명. 예: `Oaktreevil DR2`. 단지명과 동일하게 쓰일 수 있다. |
+| 주택명 | Housing Name | `housing_name` | 원본의 주택명 또는 공급 대상명. 예: `Oaktreevil DR2`. 단지명과 동일하게 쓰일 수 있다. |
 | 동/건물명 | Building Name | `building_name` | 동, 건물명, 주건축물명 등 건물 식별값. 원본에 없으면 비워둘 수 있다. |
 | 주소 | Address | `address` | 주택의 전체 소재지 주소. raw가 아니라 필수 정규화 필드다. |
 | 자치구 | District | `district` | 서울시 구 단위 행정구역. 예: 영등포구. |
 | 법정동 | Legal Dong | `legal_dong` | 주소에서 추출 가능한 법정동 후보. 예: 대림동. |
 | 상세주소 | Address Detail | `address_detail` | 번지, 건물명, 괄호 안 주소 등 상세 주소 정보. |
 | 공급구분 | Supply Category | `supply_category` | 신규공급, 재공급 등 공급 상태/유형. |
+| 공급호수 | Supply Count | `supply_count` | 그룹공급항목이 대표하는 모집 호수 또는 세대 수. 개별공급항목은 보통 `1`이다. |
 | 목록번호 | List Number | `list_no` | 첨부 주택목록에서 사용하는 행 번호. |
 | 주택형 | Unit Type | `unit_type` | 27A, 40A 등 면적/구조/타입을 나타내는 원본 값. |
 | 주택구조 | Structure Type | `structure_type` | 개방형원룸, 분리형원룸 등 구조 유형. |
@@ -46,6 +51,7 @@
 | 평수 | Area Pyeong | `area_pyeong` | 전용면적을 평 단위로 환산한 값. 필요 시 계산 필드로 둔다. |
 | 임대보증금 | Deposit | `deposit_krw` | 원 단위 임대보증금. 문자열이 아니라 숫자 필드로 저장한다. |
 | 월임대료 | Monthly Rent | `monthly_rent_krw` | 원 단위 월임대료. 문자열이 아니라 숫자 필드로 저장한다. |
+| 전세금액 | Jeonse Deposit | `jeonse_deposit_krw` | 장기전세 등에서 월임대료 없이 전세보증금 성격으로 제시되는 금액. 원 단위 숫자 필드로 저장한다. |
 | 상호전환제도 | Rent Conversion Rule | `rent_conversion_rule` | 월임대료를 보증금으로, 또는 보증금을 월임대료로 전환하는 규칙. |
 | 월임대료 보증금 전환 가능 여부 | Rent-to-Deposit Allowed | `rent_to_deposit_allowed` | 월임대료 일부를 보증금으로 전환할 수 있는지 여부. |
 | 월임대료 보증금 전환 최대비율 | Rent-to-Deposit Max Ratio | `rent_to_deposit_max_ratio` | 월임대료 중 최대 몇 %를 보증금으로 전환 가능한지. 예: `0.60`. |

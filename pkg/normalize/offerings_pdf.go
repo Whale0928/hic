@@ -9,7 +9,7 @@ import (
 
 var roadBranchSpacingPattern = regexp.MustCompile(`(대로|로) ([0-9]+길)`)
 
-func InferHousingUnitsFromPDFText(artifact extraction.ExtractedArtifact) []HousingUnitCandidate {
+func InferOfferingsFromPDFText(artifact extraction.ExtractedArtifact) []OfferingCandidate {
 	if artifact.Type != extraction.ArtifactTypePDFText {
 		return nil
 	}
@@ -18,69 +18,70 @@ func InferHousingUnitsFromPDFText(artifact extraction.ExtractedArtifact) []Housi
 	if len(tokens) == 0 {
 		return nil
 	}
-	unit := inferSupplyHousingUnit(artifact, tokens)
-	if unit.UnitNo == "" {
-		unit = inferApplicationFormUnit(artifact, tokens)
+	offering := inferSupplyOffering(artifact, tokens)
+	if offering.UnitNo == "" {
+		offering = inferApplicationFormOffering(artifact, tokens)
 	}
-	if unit.UnitNo == "" {
+	if offering.UnitNo == "" {
 		return nil
 	}
-	return []HousingUnitCandidate{unit}
+	return []OfferingCandidate{offering}
 }
 
-func inferSupplyHousingUnit(artifact extraction.ExtractedArtifact, tokens []string) HousingUnitCandidate {
+func inferSupplyOffering(artifact extraction.ExtractedArtifact, tokens []string) OfferingCandidate {
 	supplyIndex := indexToken(tokens, "공급주택")
 	targetIndex := indexToken(tokens, "공급대상")
 	valuesStart := indexToken(tokens, "임대료")
 	moveInIndex := indexToken(tokens, "입주가능일")
 	if supplyIndex < 0 || targetIndex < 0 || valuesStart < 0 || moveInIndex < 0 {
-		return HousingUnitCandidate{}
+		return OfferingCandidate{}
 	}
 	if !(supplyIndex < targetIndex && targetIndex < valuesStart && valuesStart < moveInIndex) {
-		return HousingUnitCandidate{}
+		return OfferingCandidate{}
 	}
 
 	values := tokens[valuesStart+1 : moveInIndex]
 	if len(values) < 8 {
-		return HousingUnitCandidate{}
+		return OfferingCandidate{}
 	}
 	unitNo := unitNoFromValues(values)
 	addressTokens := trimSupplyAddressTokens(tokens[supplyIndex+1:targetIndex], unitNo)
-	return buildPDFUnit(artifact, formatKoreanAddress(addressTokens), unitNo, values, "pdf_supply_housing_table")
+	return buildPDFOffering(artifact, formatKoreanAddress(addressTokens), unitNo, values, "pdf_supply_housing_table")
 }
 
-func inferApplicationFormUnit(artifact extraction.ExtractedArtifact, tokens []string) HousingUnitCandidate {
+func inferApplicationFormOffering(artifact extraction.ExtractedArtifact, tokens []string) OfferingCandidate {
 	roomIndex := indexToken(tokens, "공급호실")
 	addressStart := nearestTokenBefore(tokens, "주소", roomIndex)
 	if addressStart < 0 || roomIndex < 0 || addressStart >= roomIndex {
-		return HousingUnitCandidate{}
+		return OfferingCandidate{}
 	}
 
 	valuesStart := indexToken(tokens, "임대료")
 	moveInIndex := indexToken(tokens, "입주가능일")
 	if valuesStart < 0 || moveInIndex < 0 || valuesStart >= moveInIndex {
-		return HousingUnitCandidate{}
+		return OfferingCandidate{}
 	}
 	values := tokens[valuesStart+1 : moveInIndex]
 	if len(values) < 8 {
-		return HousingUnitCandidate{}
+		return OfferingCandidate{}
 	}
 
 	address := formatKoreanAddress(tokens[addressStart+1 : roomIndex])
-	return buildPDFUnit(artifact, address, unitNoFromValues(values), values, "pdf_application_form_table")
+	return buildPDFOffering(artifact, address, unitNoFromValues(values), values, "pdf_application_form_table")
 }
 
-func buildPDFUnit(artifact extraction.ExtractedArtifact, address string, unitNo string, values []string, source string) HousingUnitCandidate {
+func buildPDFOffering(artifact extraction.ExtractedArtifact, address string, unitNo string, values []string, source string) OfferingCandidate {
 	valueOffset := 0
 	if len(values) > 1 && values[1] == "호" {
 		valueOffset = 2
 	}
 	if len(values) < valueOffset+6 {
-		return HousingUnitCandidate{}
+		return OfferingCandidate{}
 	}
 	depositText := values[valueOffset+4]
 	rentText := values[valueOffset+5]
-	return HousingUnitCandidate{
+	return OfferingCandidate{
+		OfferingType:    OfferingTypeUnit,
 		Address:         address,
 		District:        districtFromAddress(address),
 		UnitNo:          unitNo,

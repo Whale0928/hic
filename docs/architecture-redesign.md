@@ -4,13 +4,13 @@
 
 ## 1. 설계 목표
 
-집 모아(House Information Collector)는 SH/LH 등 공공주택 사이트에서 **모집공고 계열만** 수집하고, 첨부자료에서 개별 주택 정보를 정규화하는 시스템이다.
+집 모아(House Information Collector)는 SH/LH 등 공공주택 사이트에서 **모집공고 계열만** 수집하고, 첨부자료에서 공급항목(Offering) 정보를 정규화하는 시스템이다.
 
 이번 재설계의 핵심은 다음이다.
 
 - 모집공고가 아닌 게시글은 DB에도 저장하지 않는다.
 - Raw 데이터는 조회 모델이 아니라 감사/재처리용 증거로만 둔다.
-- 주소, 호실, 면적, 보증금, 월임대료, 상호전환, 공급일정은 모두 정규화 필드가 되어야 한다.
+- 주소, 호실, 모집호수, 면적, 보증금, 월임대료, 전세금액, 상호전환, 공급일정은 모두 정규화 필드가 되어야 한다.
 - 각 레이어는 자신의 책임만 수행하고, 다음 레이어로 넘기기 전 검증 게이트를 통과해야 한다.
 - 하드코딩된 사이트별 로직은 레지스트리와 전략 객체 뒤에 숨기고, 단계별 fallback을 명시한다.
 
@@ -45,7 +45,7 @@ qa
 |---|---|---|---|
 | Discovery | board registry, page range | recruitment notice candidate, attachment metadata | 모집공고 계열만 남아야 함 |
 | Extraction | recruitment notice, attachment metadata | stored object, extracted artifact | checksum, content type, extractor status가 있어야 함 |
-| Normalize | extracted artifact | normalized notice, housing unit, schedules, conversion rules | 필수 필드와 source trace가 있어야 함 |
+| Normalize | extracted artifact | normalized notice, offering, schedules, conversion rules | 필수 필드와 source trace가 있어야 함 |
 | LLM | low-confidence artifact | structured candidate JSON | JSON schema와 source span이 있어야 함 |
 | QA | normalized records | serving promotion decision | 누락률, 중복, 계산 검증을 통과해야 함 |
 | Workflow | job request | run report | 실패 단위가 격리되고 재실행 가능해야 함 |
@@ -129,8 +129,9 @@ qa
 - `notice_subtype`
 - `source_url`
 
-### 주택
+### 공급항목
 
+- `offering_type`
 - `supply_category`
 - `list_no`
 - `district`
@@ -139,6 +140,7 @@ qa
 - `housing_name`
 - `building_name`
 - `unit_no`
+- `supply_count`
 - `floor_no`
 - `unit_type`
 - `structure_type`
@@ -150,6 +152,10 @@ qa
 - `area_pyeong`
 - `deposit_krw`
 - `monthly_rent_krw`
+- `jeonse_deposit_krw`
+
+`unit_no`는 개별공급항목(Unit Offering)에서 필수이고, 그룹공급항목(Group Offering)에서는 비어 있을 수 있다.
+그룹공급항목은 `complex_name` 또는 `housing_name`, `exclusive_area_m2`, `supply_count`, 금액 필드 중 하나 이상을 중심으로 검증한다.
 
 ### 상호전환
 
@@ -195,8 +201,10 @@ qa
 
 ### Normalize QA
 
-- 주택 행은 주소, 자치구, 주택명, 호실, 전용면적, 보증금, 월임대료가 비어 있으면 실패한다.
-- 상호전환 규칙은 공고 단위로 저장되고, 주택별 계산값이 생성되어야 한다.
+- 공급항목은 개별공급항목과 그룹공급항목으로 나누어 검증한다.
+- 개별공급항목은 주소, 자치구, 호실, 전용면적, 보증금/월임대료/전세금액 중 적용 가능한 금액 필드가 있어야 한다.
+- 그룹공급항목은 단지명 또는 주택명, 자치구, 전용면적, 모집호수, 보증금/월임대료/전세금액 중 적용 가능한 금액 필드가 있어야 하며, 호실은 비어 있을 수 있다.
+- 상호전환 규칙은 공고 단위로 저장되고, 공급항목별 계산값이 생성되어야 한다.
 - 공급일정은 본문 텍스트가 아니라 일정 테이블에 저장되어야 한다.
 
 ### LLM QA

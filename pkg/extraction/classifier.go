@@ -17,7 +17,7 @@ func ClassifyAttachment(filename string) AttachmentKind {
 	}
 	if ext == "xlsx" || ext == "xlsm" {
 		if containsAny(name, "주택목록", "공급대상", "동호", "호실") {
-			return AttachmentKindHousingUnitListXLSX
+			return AttachmentKindOfferingListXLSX
 		}
 		return AttachmentKindUnsupported
 	}

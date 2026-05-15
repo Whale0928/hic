@@ -140,13 +140,14 @@ do update set
 	error_text = excluded.error_text
 returning id;
 
--- name: UpsertHousingUnit :one
-insert into housing_units (
+-- name: UpsertOffering :one
+insert into offerings (
 	notice_id,
 	attachment_id,
 	source_artifact_id,
 	agency,
 	source,
+	offering_type,
 	supply_category,
 	list_no,
 	district,
@@ -165,6 +166,8 @@ insert into housing_units (
 	area_pyeong,
 	deposit_text,
 	deposit_krw,
+	jeonse_deposit_text,
+	jeonse_deposit_krw,
 	monthly_rent_text,
 	monthly_rent_krw,
 	supply_count,
@@ -183,7 +186,7 @@ values (
 	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 	$11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
 	$21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-	$31, $32, $33, $34, $35, $36
+	$31, $32, $33, $34, $35, $36, $37, $38, $39
 )
 on conflict (attachment_id, source_span)
 where source_span <> ''
@@ -191,6 +194,7 @@ do update set
 	source_artifact_id = excluded.source_artifact_id,
 	agency = excluded.agency,
 	source = excluded.source,
+	offering_type = excluded.offering_type,
 	supply_category = excluded.supply_category,
 	list_no = excluded.list_no,
 	district = excluded.district,
@@ -209,6 +213,8 @@ do update set
 	area_pyeong = excluded.area_pyeong,
 	deposit_text = excluded.deposit_text,
 	deposit_krw = excluded.deposit_krw,
+	jeonse_deposit_text = excluded.jeonse_deposit_text,
+	jeonse_deposit_krw = excluded.jeonse_deposit_krw,
 	monthly_rent_text = excluded.monthly_rent_text,
 	monthly_rent_krw = excluded.monthly_rent_krw,
 	supply_count = excluded.supply_count,
@@ -220,7 +226,7 @@ do update set
 	source_page = excluded.source_page,
 	raw_row = excluded.raw_row,
 	confidence = excluded.confidence,
-	qa_status = case when housing_units.qa_status = 'approved' then 'approved' else excluded.qa_status end
+	qa_status = case when offerings.qa_status = 'approved' then 'approved' else excluded.qa_status end
 returning id;
 
 -- name: CountStoredObjects :one
@@ -229,34 +235,68 @@ select count(*) from stored_objects;
 -- name: CountExtractedArtifacts :one
 select count(*) from extracted_artifacts;
 
--- name: CountHousingUnits :one
-select count(*) from housing_units;
+-- name: CountOfferings :one
+select count(*) from offerings;
 
--- name: CountHousingUnitsByQAStatus :one
-select count(*) from housing_units
+-- name: CountOfferingsByQAStatus :one
+select count(*) from offerings
 where qa_status = $1;
 
--- name: PromoteHousingUnitsQA :exec
-update housing_units
+-- name: PromoteOfferingsQA :exec
+update offerings
 set qa_status = case
 	when exists (
 			select 1
 			from source_notices sn
-			where sn.id = housing_units.notice_id
+			where sn.id = offerings.notice_id
 				and sn.category = 'recruitment'
 		)
 		and notice_id is not null
 		and attachment_id is not null
 		and source_artifact_id is not null
-		and trim(unit_no) <> ''
-		and trim(address) <> ''
-		and exclusive_area_m2 is not null
-		and exclusive_area_m2 > 0
-		and deposit_krw is not null
-		and deposit_krw >= 0
-		and monthly_rent_krw is not null
-		and monthly_rent_krw >= 0
 		and trim(source_span) <> ''
+		and offering_type in ('unit', 'group')
+		and (
+			(
+				offering_type = 'unit'
+				and coalesce(trim(unit_no), '') <> ''
+				and trim(address) <> ''
+				and exclusive_area_m2 is not null
+				and exclusive_area_m2 > 0
+				and (
+					(
+						deposit_krw is not null
+						and deposit_krw >= 0
+						and monthly_rent_krw is not null
+						and monthly_rent_krw >= 0
+					)
+					or (
+						jeonse_deposit_krw is not null
+						and jeonse_deposit_krw >= 0
+					)
+				)
+			)
+			or (
+				offering_type = 'group'
+				and supply_count is not null
+				and supply_count > 0
+				and trim(coalesce(nullif(housing_name, ''), complex_name)) <> ''
+				and exclusive_area_m2 is not null
+				and exclusive_area_m2 > 0
+				and (
+					(
+						deposit_krw is not null
+						and deposit_krw >= 0
+						and monthly_rent_krw is not null
+						and monthly_rent_krw >= 0
+					)
+					or (
+						jeonse_deposit_krw is not null
+						and jeonse_deposit_krw >= 0
+					)
+				)
+			)
+		)
 	then 'approved'
 	else 'rejected'
 end
@@ -269,11 +309,12 @@ where agency = $1
 	and board_kind = $2
 	and category = 'recruitment';
 
--- name: ListHousingUnits :many
+-- name: ListOfferings :many
 select
 	id,
 	agency,
 	source,
+	offering_type,
 	supply_category,
 	list_no,
 	district,
@@ -286,13 +327,16 @@ select
 	exclusive_area_m2,
 	deposit_text,
 	deposit_krw,
+	jeonse_deposit_text,
+	jeonse_deposit_krw,
 	monthly_rent_text,
 	monthly_rent_krw,
+	supply_count,
 	source_sheet,
 	source_row,
 	source_span,
 	qa_status
-from housing_units
+from offerings
 where qa_status = $2
 order by id desc
 limit $1;

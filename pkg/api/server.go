@@ -11,7 +11,7 @@ import (
 )
 
 type Repository interface {
-	ListHousingUnits(ctx context.Context, limit int32, qaStatus string) ([]persistence.HousingUnitView, error)
+	ListOfferings(ctx context.Context, limit int32, qaStatus string) ([]persistence.OfferingView, error)
 	ListSourceNotices(ctx context.Context, limit int32) ([]persistence.SourceNoticeView, error)
 }
 
@@ -24,7 +24,7 @@ func New(repo Repository) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 	e.GET("/health", server.health)
-	e.GET("/units", server.listUnits)
+	e.GET("/offerings", server.listOfferings)
 	e.GET("/notices", server.listNotices)
 	return e
 }
@@ -33,12 +33,12 @@ func (s Server) health(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s Server) listUnits(c echo.Context) error {
-	units, err := s.repo.ListHousingUnits(c.Request().Context(), parseLimit(c.QueryParam("limit"), 200), qaStatusParam(c.QueryParam("qa_status")))
+func (s Server) listOfferings(c echo.Context) error {
+	offerings, err := s.repo.ListOfferings(c.Request().Context(), parseLimit(c.QueryParam("limit"), 200), qaStatusParam(c.QueryParam("qa_status")))
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, units)
+	return c.JSON(http.StatusOK, offerings)
 }
 
 func (s Server) listNotices(c echo.Context) error {

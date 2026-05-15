@@ -34,15 +34,16 @@ This file is the first reference for any AI agent working in this repository.
 
 ## Domain Definition
 
-The user defines `주택` as an individual housing unit or room inside a building, not the building itself.
+The user now defines the normalized end-user grain as `공급항목(Offering)`.
+It can represent a concrete unit/room when `unit_no` is known, or a grouped supply row when a notice publishes only complex/type/area/count/price and assigns unit numbers later.
 
 Core hierarchy:
 
 ```text
-Agency -> Board -> Notice -> Attachment -> Extracted Artifact -> Housing Unit
+Agency -> Board -> Notice -> Attachment -> Extracted Artifact -> Offering
 ```
 
-`Housing Unit` is the core end-user data grain. Unit-level information often lives inside XLSX/PDF/HWP attachments, not in the notice HTML.
+`Offering` is the core end-user data grain. Unit-level or group-level information often lives inside XLSX/PDF/HWP attachments, not in the notice HTML.
 
 ## Target Stack
 
@@ -112,7 +113,7 @@ LLM:
 Workflow:
 
 - Orchestrates stages, retries, checkpoints, and idempotency.
-- Failed attachment/artifact units must be independently retryable.
+- Failed attachment/artifact offering records must be independently retryable.
 
 QA:
 

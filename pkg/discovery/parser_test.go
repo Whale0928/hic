@@ -84,3 +84,41 @@ func TestParseBoardDetail_첨부파일과본문을추출한다(t *testing.T) {
 		t.Fatalf("Attachment = %+v", att)
 	}
 }
+
+func TestParseBoardDetail_캡션형상세화면에서제목과작성일을추출한다(t *testing.T) {
+	html := `
+	<div class="detailTable gs0401Table">
+	<table>
+	  <caption>2026년 위국헌신청년주택 입주자 모집공고(2026. 5. 15.)</caption>
+	  <thead>
+	    <tr><th scope="col" colspan="2">2026년 위국헌신청년주택 입주자 모집공고(2026. 5. 15.)</th></tr>
+	  </thead>
+	  <tbody>
+	    <tr>
+	      <td colspan="2">
+	        <ul>
+	          <li><strong>등록일 : </strong>2026-05-15</li>
+	          <li><strong>조회수 : </strong>567</li>
+	        </ul>
+	      </td>
+	    </tr>
+	    <tr><td class="cont">공급대상 있음</td></tr>
+	  </tbody>
+	</table>
+	</div>`
+
+	detail, err := ParseBoardDetail(strings.NewReader(html))
+	if err != nil {
+		t.Fatalf("ParseBoardDetail() error = %v", err)
+	}
+
+	if detail.Title != "2026년 위국헌신청년주택 입주자 모집공고(2026. 5. 15.)" {
+		t.Fatalf("Title = %q", detail.Title)
+	}
+	if detail.PostedAt == nil || detail.PostedAt.Format(time.DateOnly) != "2026-05-15" {
+		t.Fatalf("PostedAt = %#v", detail.PostedAt)
+	}
+	if detail.ViewCount != 567 {
+		t.Fatalf("ViewCount = %d, want 567", detail.ViewCount)
+	}
+}

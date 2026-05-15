@@ -33,7 +33,7 @@ docker compose up -d postgres
 go run . migrate
 go run . workflow collect-sh --board rental --pages 3 --dry-run=true
 go run . workflow collect-sh --board rental --pages 3 --dry-run=false --preserve-attachments
-go run . qa promote-units
+go run . qa promote-offerings
 go run . serve
 ```
 
@@ -70,7 +70,7 @@ Redis와 MinIO는 선택 지원 인프라입니다. 핵심 도메인 로직은 R
 - PDF 텍스트 추출
 - XLSX 주택목록 행 추출
 - PDF 단일호실 공급표 일부 정규화
-- QA 승인 후 `/units` 기본 노출
+- QA 승인 후 `/offerings` 기본 노출
 
 ## Reference
 

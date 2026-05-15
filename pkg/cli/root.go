@@ -202,7 +202,7 @@ func newHelpCommand() *cobra.Command {
 	}
 }
 
-func collectionRunStats(report discovery.Report, downloaded int, insertedArtifacts int, upsertedUnits int, storedObjects int64, totalArtifacts int64, totalUnits int64) map[string]any {
+func collectionRunStats(report discovery.Report, downloaded int, insertedArtifacts int, upsertedOfferings int, storedObjects int64, totalArtifacts int64, totalOfferings int64) map[string]any {
 	return map[string]any{
 		"pages":              report.Pages,
 		"list_rows":          report.ListRows,
@@ -214,10 +214,10 @@ func collectionRunStats(report discovery.Report, downloaded int, insertedArtifac
 		"stopped_by_cutoff":  report.StoppedByCutoff,
 		"downloaded":         downloaded,
 		"inserted_artifacts": insertedArtifacts,
-		"upserted_units":     upsertedUnits,
+		"upserted_offerings": upsertedOfferings,
 		"stored_objects":     storedObjects,
 		"total_artifacts":    totalArtifacts,
-		"total_units":        totalUnits,
+		"total_offerings":    totalOfferings,
 	}
 }
 
@@ -315,7 +315,7 @@ func newNormalizeCommand() *cobra.Command {
 	}
 	cmd.AddCommand(
 		placeholderCommand("notice", "공고 메타데이터를 정규화합니다"),
-		placeholderCommand("units", "주택 unit을 정규화합니다"),
+		placeholderCommand("offerings", "공급항목을 정규화합니다"),
 		placeholderCommand("schedules", "공고 일정을 정규화합니다"),
 		placeholderCommand("conversion", "임대료-보증금 전환 규칙을 정규화합니다"),
 	)
@@ -372,10 +372,10 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			var runID int64
 			var downloaded int
 			var insertedArtifacts int
-			var upsertedUnits int
+			var upsertedOfferings int
 			var storedObjects int64
 			var totalArtifacts int64
-			var totalUnits int64
+			var totalOfferings int64
 			if !dryRun && preserveAttachments {
 				runID, err = repo.CreateCollectionRun(cmd.Context(), strings.ToLower(board.Agency)+":"+board.BoardKind)
 				if err != nil {
@@ -388,7 +388,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 						status = persistence.CollectionRunStatusFailed
 						errorText = err.Error()
 					}
-					finishErr := repo.FinishCollectionRun(cmd.Context(), runID, status, collectionRunStats(report, downloaded, insertedArtifacts, upsertedUnits, storedObjects, totalArtifacts, totalUnits), errorText)
+					finishErr := repo.FinishCollectionRun(cmd.Context(), runID, status, collectionRunStats(report, downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings), errorText)
 					if err == nil && finishErr != nil {
 						err = finishErr
 					}
@@ -446,12 +446,12 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 						artifactIDsBySpan[artifact.SourceSpan] = artifactID
 						insertedArtifacts++
 					}
-					for _, unit := range normalizeHousingUnitsFromArtifacts(attachment.Kind, artifacts) {
-						artifactID := artifactIDsBySpan[unit.SourceSpan]
-						if _, err := repo.UpsertHousingUnit(cmd.Context(), attachment, artifactID, unit); err != nil {
+					for _, offering := range normalizeOfferingsFromArtifacts(attachment.Kind, artifacts) {
+						artifactID := artifactIDsBySpan[offering.SourceSpan]
+						if _, err := repo.UpsertOffering(cmd.Context(), attachment, artifactID, offering); err != nil {
 							return err
 						}
-						upsertedUnits++
+						upsertedOfferings++
 					}
 				}
 			}
@@ -459,15 +459,15 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			totalUnits, err = repo.CountHousingUnits(cmd.Context())
+			totalOfferings, err = repo.CountOfferings(cmd.Context())
 			if err != nil {
 				return err
 			}
-			qaSummary, err := repo.PromoteHousingUnitsQA(cmd.Context())
+			qaSummary, err := repo.PromoteOfferingsQA(cmd.Context())
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(cmd.OutOrStdout(), formatCollectionSummary(downloaded, insertedArtifacts, upsertedUnits, storedObjects, totalArtifacts, totalUnits, qaSummary))
+			fmt.Fprint(cmd.OutOrStdout(), formatCollectionSummary(downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings, qaSummary))
 			return nil
 		},
 	}
@@ -482,14 +482,14 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 	return cmd
 }
 
-func formatCollectionSummary(downloaded int, insertedArtifacts int, upsertedUnits int, storedObjects int64, totalArtifacts int64, totalUnits int64, qaSummary persistence.QASummary) string {
+func formatCollectionSummary(downloaded int, insertedArtifacts int, upsertedOfferings int, storedObjects int64, totalArtifacts int64, totalOfferings int64, qaSummary persistence.QASummary) string {
 	return fmt.Sprintf(
-		"db stored_objects=%d extracted_artifacts=%d housing_units=%d inserted_artifacts=%d upserted_units=%d qa_approved=%d qa_rejected=%d qa_pending=%d\n",
+		"db stored_objects=%d extracted_artifacts=%d offerings=%d inserted_artifacts=%d upserted_offerings=%d qa_approved=%d qa_rejected=%d qa_pending=%d\n",
 		storedObjects,
 		totalArtifacts,
-		totalUnits,
+		totalOfferings,
 		insertedArtifacts,
-		upsertedUnits,
+		upsertedOfferings,
 		qaSummary.Approved,
 		qaSummary.Rejected,
 		qaSummary.Pending,
@@ -511,16 +511,17 @@ func splitCSV(raw string) []string {
 	return out
 }
 
-func normalizeHousingUnitsFromArtifacts(kind extraction.AttachmentKind, artifacts []extraction.ExtractedArtifact) []normalize.HousingUnitCandidate {
+func normalizeOfferingsFromArtifacts(kind extraction.AttachmentKind, artifacts []extraction.ExtractedArtifact) []normalize.OfferingCandidate {
 	switch kind {
-	case extraction.AttachmentKindHousingUnitListXLSX:
-		return normalize.InferHousingUnitsFromXLSXRows(artifacts)
+	case extraction.AttachmentKindOfferingListXLSX:
+		return normalize.InferOfferingsFromXLSXRows(artifacts)
 	case extraction.AttachmentKindNoticePDF:
-		units := make([]normalize.HousingUnitCandidate, 0)
+		offerings := make([]normalize.OfferingCandidate, 0)
 		for _, artifact := range artifacts {
-			units = append(units, normalize.InferHousingUnitsFromPDFText(artifact)...)
+			offerings = append(offerings, normalize.InferOfferingsFromPDFText(artifact)...)
 		}
-		return units
+		offerings = append(offerings, normalize.InferOfferingsFromPDFTableRows(artifacts)...)
+		return offerings
 	default:
 		return nil
 	}
@@ -533,12 +534,12 @@ func extractPreservedAttachment(objectStore extraction.LocalObjectStore, attachm
 	}
 	switch attachment.Kind {
 	case extraction.AttachmentKindNoticePDF, extraction.AttachmentKindSchedulePDF:
-		artifact, err := extraction.ExtractPDFText(path)
+		artifacts, err := extraction.ExtractPDFArtifacts(path)
 		if err != nil {
 			return nil, err
 		}
-		return []extraction.ExtractedArtifact{artifact}, nil
-	case extraction.AttachmentKindHousingUnitListXLSX:
+		return artifacts, nil
+	case extraction.AttachmentKindOfferingListXLSX:
 		return extraction.ExtractXLSXRows(path)
 	default:
 		return nil, nil
@@ -552,15 +553,15 @@ func newQACommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	}
 	cmd.AddCommand(
 		placeholderCommand("sample", "샘플 QA 케이스를 실행합니다"),
-		newQAPromoteUnitsCommand(ctx, cfg),
+		newQAPromoteOfferingsCommand(ctx, cfg),
 	)
 	return cmd
 }
 
-func newQAPromoteUnitsCommand(ctx context.Context, cfg global.Config) *cobra.Command {
+func newQAPromoteOfferingsCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	return &cobra.Command{
-		Use:   "promote-units",
-		Short: "QA를 통과한 pending 주택 unit을 승인합니다",
+		Use:   "promote-offerings",
+		Short: "QA를 통과한 pending 공급항목을 승인합니다",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, err := persistence.Open(ctx, cfg.DatabaseURL)
 			if err != nil {
@@ -568,7 +569,7 @@ func newQAPromoteUnitsCommand(ctx context.Context, cfg global.Config) *cobra.Com
 			}
 			defer repo.Close()
 
-			summary, err := repo.PromoteHousingUnitsQA(cmd.Context())
+			summary, err := repo.PromoteOfferingsQA(cmd.Context())
 			if err != nil {
 				return err
 			}

@@ -32,28 +32,32 @@ type PersistedAttachment struct {
 	Kind           extraction.AttachmentKind
 }
 
-type HousingUnitView struct {
-	ID              int64    `json:"id"`
-	Agency          string   `json:"agency"`
-	Source          string   `json:"source"`
-	SupplyCategory  string   `json:"supply_category"`
-	ListNo          string   `json:"list_no"`
-	District        string   `json:"district"`
-	Address         string   `json:"address"`
-	HousingName     string   `json:"housing_name"`
-	ComplexName     string   `json:"complex_name"`
-	BuildingName    string   `json:"building_name"`
-	UnitNo          string   `json:"unit_no"`
-	UnitType        string   `json:"unit_type"`
-	ExclusiveAreaM2 *float64 `json:"exclusive_area_m2,omitempty"`
-	DepositText     string   `json:"deposit_text"`
-	DepositKRW      *int64   `json:"deposit_krw,omitempty"`
-	MonthlyRentText string   `json:"monthly_rent_text"`
-	MonthlyRentKRW  *int64   `json:"monthly_rent_krw,omitempty"`
-	SourceSheet     string   `json:"source_sheet"`
-	SourceRow       *int32   `json:"source_row,omitempty"`
-	SourceSpan      string   `json:"source_span"`
-	QAStatus        string   `json:"qa_status"`
+type OfferingView struct {
+	ID                int64    `json:"id"`
+	Agency            string   `json:"agency"`
+	Source            string   `json:"source"`
+	OfferingType      string   `json:"offering_type"`
+	SupplyCategory    string   `json:"supply_category"`
+	ListNo            string   `json:"list_no"`
+	District          string   `json:"district"`
+	Address           string   `json:"address"`
+	HousingName       string   `json:"housing_name"`
+	ComplexName       string   `json:"complex_name"`
+	BuildingName      string   `json:"building_name"`
+	UnitNo            string   `json:"unit_no"`
+	UnitType          string   `json:"unit_type"`
+	ExclusiveAreaM2   *float64 `json:"exclusive_area_m2,omitempty"`
+	DepositText       string   `json:"deposit_text"`
+	DepositKRW        *int64   `json:"deposit_krw,omitempty"`
+	JeonseDepositText string   `json:"jeonse_deposit_text"`
+	JeonseDepositKRW  *int64   `json:"jeonse_deposit_krw,omitempty"`
+	MonthlyRentText   string   `json:"monthly_rent_text"`
+	MonthlyRentKRW    *int64   `json:"monthly_rent_krw,omitempty"`
+	SupplyCount       *int32   `json:"supply_count,omitempty"`
+	SourceSheet       string   `json:"source_sheet"`
+	SourceRow         *int32   `json:"source_row,omitempty"`
+	SourceSpan        string   `json:"source_span"`
+	QAStatus          string   `json:"qa_status"`
 }
 
 type SourceNoticeView struct {
@@ -234,44 +238,47 @@ func (r *Repository) InsertArtifact(ctx context.Context, attachmentID int64, sto
 	})
 }
 
-func (r *Repository) UpsertHousingUnit(ctx context.Context, attachment PersistedAttachment, sourceArtifactID int64, unit normalize.HousingUnitCandidate) (int64, error) {
-	return r.queries.UpsertHousingUnit(ctx, db.UpsertHousingUnitParams{
-		NoticeID:         int8Value(attachment.NoticeID),
-		AttachmentID:     int8Value(attachment.AttachmentID),
-		SourceArtifactID: int8Value(sourceArtifactID),
-		Agency:           "SH",
-		Source:           "sh",
-		SupplyCategory:   unit.SupplyCategory,
-		ListNo:           unit.ListNo,
-		District:         unit.District,
-		Address:          unit.Address,
-		LegalDong:        unit.LegalDong,
-		AddressDetail:    unit.AddressDetail,
-		HousingName:      unit.HousingName,
-		ComplexName:      unit.ComplexName,
-		BuildingName:     unit.BuildingName,
-		UnitNo:           unit.UnitNo,
-		Floor:            int4PtrValue(unit.FloorNo),
-		FloorNo:          int4PtrValue(unit.FloorNo),
-		UnitType:         unit.UnitType,
-		StructureType:    unit.StructureType,
-		ExclusiveAreaM2:  numericPtrValue(unit.ExclusiveAreaM2),
-		AreaPyeong:       numericPtrValue(unit.AreaPyeong),
-		DepositText:      unit.DepositText,
-		DepositKrw:       int8PtrValue(unit.DepositKRW),
-		MonthlyRentText:  unit.MonthlyRentText,
-		MonthlyRentKrw:   int8PtrValue(unit.MonthlyRentKRW),
-		SupplyCount:      int4PtrValue(unit.SupplyCount),
-		Direction:        unit.Direction,
-		Status:           unit.Status,
-		SourceSheet:      unit.SourceSheet,
-		SourceRow:        int4Value(unit.SourceRow),
-		SourceCell:       unit.SourceCell,
-		SourcePage:       int4Value(unit.SourcePage),
-		SourceSpan:       unit.SourceSpan,
-		RawRow:           mustJSONAny(unit.RawRow),
-		Confidence:       numericValue(unit.Confidence),
-		QaStatus:         "pending",
+func (r *Repository) UpsertOffering(ctx context.Context, attachment PersistedAttachment, sourceArtifactID int64, offering normalize.OfferingCandidate) (int64, error) {
+	return r.queries.UpsertOffering(ctx, db.UpsertOfferingParams{
+		NoticeID:          int8Value(attachment.NoticeID),
+		AttachmentID:      int8Value(attachment.AttachmentID),
+		SourceArtifactID:  int8Value(sourceArtifactID),
+		Agency:            "SH",
+		Source:            "sh",
+		OfferingType:      offeringTypeValue(offering.OfferingType),
+		SupplyCategory:    offering.SupplyCategory,
+		ListNo:            offering.ListNo,
+		District:          offering.District,
+		Address:           offering.Address,
+		LegalDong:         offering.LegalDong,
+		AddressDetail:     offering.AddressDetail,
+		HousingName:       offering.HousingName,
+		ComplexName:       offering.ComplexName,
+		BuildingName:      offering.BuildingName,
+		UnitNo:            stringValue(offering.UnitNo),
+		Floor:             int4PtrValue(offering.FloorNo),
+		FloorNo:           int4PtrValue(offering.FloorNo),
+		UnitType:          offering.UnitType,
+		StructureType:     offering.StructureType,
+		ExclusiveAreaM2:   numericPtrValue(offering.ExclusiveAreaM2),
+		AreaPyeong:        numericPtrValue(offering.AreaPyeong),
+		DepositText:       offering.DepositText,
+		DepositKrw:        int8PtrValue(offering.DepositKRW),
+		JeonseDepositText: offering.JeonseDepositText,
+		JeonseDepositKrw:  int8PtrValue(offering.JeonseDepositKRW),
+		MonthlyRentText:   offering.MonthlyRentText,
+		MonthlyRentKrw:    int8PtrValue(offering.MonthlyRentKRW),
+		SupplyCount:       int4PtrValue(offering.SupplyCount),
+		Direction:         offering.Direction,
+		Status:            offering.Status,
+		SourceSheet:       offering.SourceSheet,
+		SourceRow:         int4Value(offering.SourceRow),
+		SourceCell:        offering.SourceCell,
+		SourcePage:        int4Value(offering.SourcePage),
+		SourceSpan:        offering.SourceSpan,
+		RawRow:            mustJSONAny(offering.RawRow),
+		Confidence:        numericValue(offering.Confidence),
+		QaStatus:          "pending",
 	})
 }
 
@@ -284,8 +291,8 @@ func (r *Repository) Counts(ctx context.Context) (storedObjects int64, artifacts
 	return storedObjects, artifacts, err
 }
 
-func (r *Repository) CountHousingUnits(ctx context.Context) (int64, error) {
-	return r.queries.CountHousingUnits(ctx)
+func (r *Repository) CountOfferings(ctx context.Context) (int64, error) {
+	return r.queries.CountOfferings(ctx)
 }
 
 func (r *Repository) ExistingNoticeSeqs(ctx context.Context, agency string, boardKind string) (map[string]bool, error) {
@@ -306,70 +313,74 @@ func (r *Repository) ExistingNoticeSeqs(ctx context.Context, agency string, boar
 	return known, nil
 }
 
-func (r *Repository) PromoteHousingUnitsQA(ctx context.Context) (QASummary, error) {
-	if err := r.queries.PromoteHousingUnitsQA(ctx); err != nil {
+func (r *Repository) PromoteOfferingsQA(ctx context.Context) (QASummary, error) {
+	if err := r.queries.PromoteOfferingsQA(ctx); err != nil {
 		return QASummary{}, err
 	}
-	return r.HousingUnitsQASummary(ctx)
+	return r.OfferingsQASummary(ctx)
 }
 
-func (r *Repository) HousingUnitsQASummary(ctx context.Context) (QASummary, error) {
-	approved, err := r.queries.CountHousingUnitsByQAStatus(ctx, "approved")
+func (r *Repository) OfferingsQASummary(ctx context.Context) (QASummary, error) {
+	approved, err := r.queries.CountOfferingsByQAStatus(ctx, "approved")
 	if err != nil {
 		return QASummary{}, err
 	}
-	rejected, err := r.queries.CountHousingUnitsByQAStatus(ctx, "rejected")
+	rejected, err := r.queries.CountOfferingsByQAStatus(ctx, "rejected")
 	if err != nil {
 		return QASummary{}, err
 	}
-	pending, err := r.queries.CountHousingUnitsByQAStatus(ctx, "pending")
+	pending, err := r.queries.CountOfferingsByQAStatus(ctx, "pending")
 	if err != nil {
 		return QASummary{}, err
 	}
 	return QASummary{Approved: approved, Rejected: rejected, Pending: pending}, nil
 }
 
-func (r *Repository) ListHousingUnits(ctx context.Context, limit int32, qaStatus string) ([]HousingUnitView, error) {
+func (r *Repository) ListOfferings(ctx context.Context, limit int32, qaStatus string) ([]OfferingView, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
 	if strings.TrimSpace(qaStatus) == "" {
 		qaStatus = "approved"
 	}
-	rows, err := r.queries.ListHousingUnits(ctx, db.ListHousingUnitsParams{
+	rows, err := r.queries.ListOfferings(ctx, db.ListOfferingsParams{
 		Limit:    limit,
 		QaStatus: qaStatus,
 	})
 	if err != nil {
 		return nil, err
 	}
-	units := make([]HousingUnitView, 0, len(rows))
+	offerings := make([]OfferingView, 0, len(rows))
 	for _, row := range rows {
-		units = append(units, HousingUnitView{
-			ID:              row.ID,
-			Agency:          row.Agency,
-			Source:          row.Source,
-			SupplyCategory:  row.SupplyCategory,
-			ListNo:          row.ListNo,
-			District:        row.District,
-			Address:         row.Address,
-			HousingName:     row.HousingName,
-			ComplexName:     row.ComplexName,
-			BuildingName:    row.BuildingName,
-			UnitNo:          row.UnitNo,
-			UnitType:        row.UnitType,
-			ExclusiveAreaM2: numericToFloat64Ptr(row.ExclusiveAreaM2),
-			DepositText:     row.DepositText,
-			DepositKRW:      int8ToInt64Ptr(row.DepositKrw),
-			MonthlyRentText: row.MonthlyRentText,
-			MonthlyRentKRW:  int8ToInt64Ptr(row.MonthlyRentKrw),
-			SourceSheet:     row.SourceSheet,
-			SourceRow:       int4ToInt32Ptr(row.SourceRow),
-			SourceSpan:      row.SourceSpan,
-			QAStatus:        row.QaStatus,
+		offerings = append(offerings, OfferingView{
+			ID:                row.ID,
+			Agency:            row.Agency,
+			Source:            row.Source,
+			OfferingType:      row.OfferingType,
+			SupplyCategory:    row.SupplyCategory,
+			ListNo:            row.ListNo,
+			District:          row.District,
+			Address:           row.Address,
+			HousingName:       row.HousingName,
+			ComplexName:       row.ComplexName,
+			BuildingName:      row.BuildingName,
+			UnitNo:            textToString(row.UnitNo),
+			UnitType:          row.UnitType,
+			ExclusiveAreaM2:   numericToFloat64Ptr(row.ExclusiveAreaM2),
+			DepositText:       row.DepositText,
+			DepositKRW:        int8ToInt64Ptr(row.DepositKrw),
+			JeonseDepositText: row.JeonseDepositText,
+			JeonseDepositKRW:  int8ToInt64Ptr(row.JeonseDepositKrw),
+			MonthlyRentText:   row.MonthlyRentText,
+			MonthlyRentKRW:    int8ToInt64Ptr(row.MonthlyRentKrw),
+			SupplyCount:       int4ToInt32Ptr(row.SupplyCount),
+			SourceSheet:       row.SourceSheet,
+			SourceRow:         int4ToInt32Ptr(row.SourceRow),
+			SourceSpan:        row.SourceSpan,
+			QAStatus:          row.QaStatus,
 		})
 	}
-	return units, nil
+	return offerings, nil
 }
 
 func (r *Repository) ListSourceNotices(ctx context.Context, limit int32) ([]SourceNoticeView, error) {
@@ -464,6 +475,13 @@ func dateToString(value pgtype.Date) string {
 	return value.Time.Format(time.DateOnly)
 }
 
+func offeringTypeValue(value normalize.OfferingType) string {
+	if value == "" {
+		return string(normalize.OfferingTypeUnit)
+	}
+	return string(value)
+}
+
 func numericValue(value float64) pgtype.Numeric {
 	var numeric pgtype.Numeric
 	if err := numeric.Scan(fmt.Sprintf("%f", value)); err != nil {
@@ -499,6 +517,13 @@ func stringValue(value string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: value, Valid: true}
+}
+
+func textToString(value pgtype.Text) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
 }
 
 func firstNonEmpty(values ...string) string {

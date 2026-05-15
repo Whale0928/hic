@@ -9,36 +9,46 @@ import (
 	"hic/pkg/extraction"
 )
 
-type HousingUnitCandidate struct {
-	SupplyCategory  string
-	ListNo          string
-	District        string
-	Address         string
-	LegalDong       string
-	AddressDetail   string
-	HousingName     string
-	ComplexName     string
-	BuildingName    string
-	UnitNo          string
-	FloorNo         *int
-	UnitType        string
-	StructureType   string
-	ExclusiveAreaM2 *float64
-	AreaPyeong      *float64
-	DepositText     string
-	DepositKRW      *int64
-	MonthlyRentText string
-	MonthlyRentKRW  *int64
-	SupplyCount     *int
-	Direction       string
-	Status          string
-	SourceSheet     string
-	SourceRow       int
-	SourceCell      string
-	SourcePage      int
-	SourceSpan      string
-	RawRow          map[string]any
-	Confidence      float64
+type OfferingType string
+
+const (
+	OfferingTypeUnit  OfferingType = "unit"
+	OfferingTypeGroup OfferingType = "group"
+)
+
+type OfferingCandidate struct {
+	OfferingType      OfferingType
+	SupplyCategory    string
+	ListNo            string
+	District          string
+	Address           string
+	LegalDong         string
+	AddressDetail     string
+	HousingName       string
+	ComplexName       string
+	BuildingName      string
+	UnitNo            string
+	FloorNo           *int
+	UnitType          string
+	StructureType     string
+	ExclusiveAreaM2   *float64
+	AreaPyeong        *float64
+	DepositText       string
+	DepositKRW        *int64
+	JeonseDepositText string
+	JeonseDepositKRW  *int64
+	MonthlyRentText   string
+	MonthlyRentKRW    *int64
+	SupplyCount       *int
+	Direction         string
+	Status            string
+	SourceSheet       string
+	SourceRow         int
+	SourceCell        string
+	SourcePage        int
+	SourceSpan        string
+	RawRow            map[string]any
+	Confidence        float64
 }
 
 type headerMap struct {
@@ -66,8 +76,8 @@ type headerMap struct {
 
 var numericPattern = regexp.MustCompile(`[-+]?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?|[-+]?[0-9]+(?:\.[0-9]+)?`)
 
-func InferHousingUnitsFromXLSXRows(artifacts []extraction.ExtractedArtifact) []HousingUnitCandidate {
-	var units []HousingUnitCandidate
+func InferOfferingsFromXLSXRows(artifacts []extraction.ExtractedArtifact) []OfferingCandidate {
+	var offerings []OfferingCandidate
 	headersBySheet := make(map[string]headerMap)
 	labelsBySheet := make(map[string][]string)
 
@@ -87,14 +97,14 @@ func InferHousingUnitsFromXLSXRows(artifacts []extraction.ExtractedArtifact) []H
 			continue
 		}
 
-		unit := buildHousingUnitCandidate(artifact, cells, labelsBySheet[sheet], header)
-		if unit.UnitNo == "" && unit.SupplyCount == nil {
+		offering := buildOfferingCandidate(artifact, cells, labelsBySheet[sheet], header)
+		if offering.UnitNo == "" && offering.SupplyCount == nil {
 			continue
 		}
-		units = append(units, unit)
+		offerings = append(offerings, offering)
 	}
 
-	return units
+	return offerings
 }
 
 func inferHeader(cells []string) headerMap {
@@ -170,14 +180,20 @@ func inferHeader(cells []string) headerMap {
 	return header
 }
 
-func buildHousingUnitCandidate(artifact extraction.ExtractedArtifact, cells []string, labels []string, header headerMap) HousingUnitCandidate {
+func buildOfferingCandidate(artifact extraction.ExtractedArtifact, cells []string, labels []string, header headerMap) OfferingCandidate {
 	depositText := cellAt(cells, header.deposit)
 	rentText := cellAt(cells, header.rent)
 	if rentText == "" && header.deposit >= 0 && strings.Contains(normalizeHeader(cellAt(labels, header.deposit)), "임대료") {
 		rentText = cellAt(cells, header.deposit+1)
 	}
 
-	return HousingUnitCandidate{
+	offeringType := OfferingTypeUnit
+	if cellAt(cells, header.unit) == "" && parseIntPtr(cellAt(cells, header.count)) != nil {
+		offeringType = OfferingTypeGroup
+	}
+
+	return OfferingCandidate{
+		OfferingType:    offeringType,
 		SupplyCategory:  cellAt(cells, header.supplyCategory),
 		ListNo:          cellAt(cells, header.listNo),
 		District:        cellAt(cells, header.district),

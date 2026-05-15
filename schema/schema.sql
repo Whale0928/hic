@@ -170,13 +170,42 @@ create index if not exists idx_extracted_artifacts_content_json on extracted_art
 create unique index if not exists uq_extracted_artifacts_attachment_type_span
 	on extracted_artifacts(attachment_id, artifact_type, source_span);
 
-create table if not exists housing_units (
+do $$
+begin
+	if to_regclass('public.offerings') is null and to_regclass('public.housing_units') is not null then
+		alter table housing_units rename to offerings;
+	end if;
+	if to_regclass('public.offering_conversion_estimates') is null and to_regclass('public.housing_unit_conversion_estimates') is not null then
+		alter table housing_unit_conversion_estimates rename to offering_conversion_estimates;
+	end if;
+	if to_regclass('public.offering_conversion_estimates') is not null
+		and exists (
+			select 1
+			from information_schema.columns
+			where table_schema = 'public'
+				and table_name = 'offering_conversion_estimates'
+				and column_name = 'housing_unit_id'
+		)
+		and not exists (
+			select 1
+			from information_schema.columns
+			where table_schema = 'public'
+				and table_name = 'offering_conversion_estimates'
+				and column_name = 'offering_id'
+		)
+	then
+		alter table offering_conversion_estimates rename column housing_unit_id to offering_id;
+	end if;
+end $$;
+
+create table if not exists offerings (
 	id bigserial primary key,
 	notice_id bigint references source_notices(id),
 	attachment_id bigint references attachments(id),
 	source_artifact_id bigint references extracted_artifacts(id),
 	agency text not null,
 	source text not null,
+	offering_type text not null default 'unit',
 	supply_category text not null default '',
 	list_no text not null default '',
 	district text not null default '',
@@ -186,7 +215,7 @@ create table if not exists housing_units (
 	housing_name text not null default '',
 	complex_name text not null default '',
 	building_name text not null default '',
-	unit_no text not null default '',
+	unit_no text,
 	floor integer,
 	floor_no integer,
 	unit_type text not null default '',
@@ -197,6 +226,8 @@ create table if not exists housing_units (
 	deposit_text text not null default '',
 	deposit_amount numeric,
 	deposit_krw bigint,
+	jeonse_deposit_text text not null default '',
+	jeonse_deposit_krw bigint,
 	monthly_rent_text text not null default '',
 	monthly_rent_amount numeric,
 	monthly_rent_krw bigint,
@@ -214,39 +245,55 @@ create table if not exists housing_units (
 	created_at timestamptz not null default now()
 );
 
-alter table if exists housing_units add column if not exists source_artifact_id bigint references extracted_artifacts(id);
-alter table if exists housing_units add column if not exists supply_category text not null default '';
-alter table if exists housing_units add column if not exists list_no text not null default '';
-alter table if exists housing_units add column if not exists district text not null default '';
-alter table if exists housing_units add column if not exists address text not null default '';
-alter table if exists housing_units add column if not exists legal_dong text not null default '';
-alter table if exists housing_units add column if not exists address_detail text not null default '';
-alter table if exists housing_units add column if not exists housing_name text not null default '';
-alter table if exists housing_units add column if not exists floor_no integer;
-alter table if exists housing_units add column if not exists structure_type text not null default '';
-alter table if exists housing_units add column if not exists elevator_installed boolean;
-alter table if exists housing_units add column if not exists deposit_krw bigint;
-alter table if exists housing_units add column if not exists monthly_rent_krw bigint;
-alter table if exists housing_units add column if not exists source_sheet text not null default '';
-alter table if exists housing_units add column if not exists source_row integer;
-alter table if exists housing_units add column if not exists source_cell text not null default '';
-alter table if exists housing_units add column if not exists source_page integer;
-alter table if exists housing_units add column if not exists source_span text not null default '';
-alter table if exists housing_units add column if not exists qa_status text not null default 'pending';
+alter table if exists offerings add column if not exists source_artifact_id bigint references extracted_artifacts(id);
+alter table if exists offerings add column if not exists offering_type text not null default 'unit';
+alter table if exists offerings add column if not exists supply_category text not null default '';
+alter table if exists offerings add column if not exists list_no text not null default '';
+alter table if exists offerings add column if not exists district text not null default '';
+alter table if exists offerings add column if not exists address text not null default '';
+alter table if exists offerings add column if not exists legal_dong text not null default '';
+alter table if exists offerings add column if not exists address_detail text not null default '';
+alter table if exists offerings add column if not exists housing_name text not null default '';
+alter table if exists offerings add column if not exists floor_no integer;
+alter table if exists offerings add column if not exists structure_type text not null default '';
+alter table if exists offerings add column if not exists elevator_installed boolean;
+alter table if exists offerings add column if not exists deposit_krw bigint;
+alter table if exists offerings add column if not exists jeonse_deposit_text text not null default '';
+alter table if exists offerings add column if not exists jeonse_deposit_krw bigint;
+alter table if exists offerings add column if not exists monthly_rent_krw bigint;
+alter table if exists offerings add column if not exists source_sheet text not null default '';
+alter table if exists offerings add column if not exists source_row integer;
+alter table if exists offerings add column if not exists source_cell text not null default '';
+alter table if exists offerings add column if not exists source_page integer;
+alter table if exists offerings add column if not exists source_span text not null default '';
+alter table if exists offerings add column if not exists qa_status text not null default 'pending';
+alter table if exists offerings alter column unit_no drop not null;
 
-create index if not exists idx_housing_units_notice_id on housing_units(notice_id);
-create index if not exists idx_housing_units_attachment_id on housing_units(attachment_id);
-create index if not exists idx_housing_units_source_artifact_id on housing_units(source_artifact_id);
-create index if not exists idx_housing_units_area on housing_units(exclusive_area_m2);
-create index if not exists idx_housing_units_rent on housing_units(deposit_amount, monthly_rent_amount);
-create index if not exists idx_housing_units_address on housing_units(district, legal_dong);
-create index if not exists idx_housing_units_qa_status on housing_units(qa_status);
-create index if not exists idx_housing_units_raw_row on housing_units using gin(raw_row);
-create unique index if not exists uq_housing_units_attachment_source_span
-	on housing_units(attachment_id, source_span)
+drop index if exists idx_housing_units_notice_id;
+drop index if exists idx_housing_units_attachment_id;
+drop index if exists idx_housing_units_source_artifact_id;
+drop index if exists idx_housing_units_area;
+drop index if exists idx_housing_units_rent;
+drop index if exists idx_housing_units_address;
+drop index if exists idx_housing_units_qa_status;
+drop index if exists idx_housing_units_raw_row;
+drop index if exists uq_housing_units_attachment_source_span;
+drop index if exists uq_housing_units_source_identity;
+
+create index if not exists idx_offerings_notice_id on offerings(notice_id);
+create index if not exists idx_offerings_attachment_id on offerings(attachment_id);
+create index if not exists idx_offerings_source_artifact_id on offerings(source_artifact_id);
+create index if not exists idx_offerings_type on offerings(offering_type);
+create index if not exists idx_offerings_area on offerings(exclusive_area_m2);
+create index if not exists idx_offerings_rent on offerings(deposit_amount, monthly_rent_amount);
+create index if not exists idx_offerings_address on offerings(district, legal_dong);
+create index if not exists idx_offerings_qa_status on offerings(qa_status);
+create index if not exists idx_offerings_raw_row on offerings using gin(raw_row);
+create unique index if not exists uq_offerings_attachment_source_span
+	on offerings(attachment_id, source_span)
 	where source_span <> '';
-create unique index if not exists uq_housing_units_source_identity
-	on housing_units(notice_id, attachment_id, coalesce(source_row, -1), unit_no, coalesce(nullif(housing_name, ''), complex_name))
+create unique index if not exists uq_offerings_source_identity
+	on offerings(notice_id, attachment_id, coalesce(source_row, -1), coalesce(unit_no, ''), coalesce(nullif(housing_name, ''), complex_name))
 	where qa_status = 'approved';
 
 create table if not exists rent_conversion_rules (
@@ -270,9 +317,9 @@ create table if not exists rent_conversion_rules (
 
 create index if not exists idx_rent_conversion_rules_notice_id on rent_conversion_rules(notice_id);
 
-create table if not exists housing_unit_conversion_estimates (
+create table if not exists offering_conversion_estimates (
 	id bigserial primary key,
-	housing_unit_id bigint not null references housing_units(id),
+	offering_id bigint not null references offerings(id),
 	rent_conversion_rule_id bigint not null references rent_conversion_rules(id),
 	max_convertible_rent_krw bigint,
 	estimated_additional_deposit_krw bigint,
@@ -280,10 +327,11 @@ create table if not exists housing_unit_conversion_estimates (
 	calculation_version text not null default 'v1',
 	source_span text not null default '',
 	created_at timestamptz not null default now(),
-	unique (housing_unit_id, rent_conversion_rule_id, calculation_version)
+	unique (offering_id, rent_conversion_rule_id, calculation_version)
 );
 
-create index if not exists idx_housing_unit_conversion_estimates_unit_id on housing_unit_conversion_estimates(housing_unit_id);
+drop index if exists idx_housing_unit_conversion_estimates_unit_id;
+create index if not exists idx_offering_conversion_estimates_offering_id on offering_conversion_estimates(offering_id);
 
 create table if not exists notice_schedules (
 	id bigserial primary key,
@@ -363,7 +411,7 @@ comment on column source_notices.seq is 'Source site notice sequence. SH example
 
 comment on table attachments is 'Attachment metadata for persisted recruitment-family notices.';
 comment on column attachments.stored_object_id is 'ObjectStore record for the preserved original attachment.';
-comment on column attachments.attachment_kind is 'Classified attachment role such as notice_pdf, housing_unit_list_xlsx, schedule_pdf, applicant_or_winner_file, application_form, or unsupported.';
+comment on column attachments.attachment_kind is 'Classified attachment role such as notice_pdf, offering_list_xlsx, schedule_pdf, applicant_or_winner_file, application_form, or unsupported.';
 comment on column attachments.storage_path is 'Legacy local prototype path retained for compatibility until ObjectStore migration is complete.';
 
 comment on table attachment_extractions is 'Legacy prototype extraction rows retained for compatibility.';
@@ -372,28 +420,31 @@ comment on column extracted_artifacts.artifact_type is 'Artifact kind such as xl
 comment on column extracted_artifacts.source_span is 'Machine-readable or human-readable pointer to the source page, sheet, row, cell, or HTML selector.';
 comment on column extracted_artifacts.content_json is 'Extractor payload for audit and reprocessing. Serving APIs should use normalized tables.';
 
-comment on table housing_units is 'Normalized individual housing unit records. A housing unit means a room or unit inside a building, not the building itself.';
-comment on column housing_units.supply_category is 'Supply category such as 신규공급 or 재공급 when provided by the source.';
-comment on column housing_units.list_no is 'Original row/list number from a housing unit list attachment.';
-comment on column housing_units.district is 'Seoul district extracted from the address, such as 영등포구.';
-comment on column housing_units.address is 'Full normalized address. This must not be left only in raw_row.';
-comment on column housing_units.legal_dong is 'Legal dong candidate parsed from the address.';
-comment on column housing_units.housing_name is 'Source housing name. This may overlap with complex_name in SH spreadsheets.';
-comment on column housing_units.unit_no is 'Unit or room number inside a building.';
-comment on column housing_units.floor_no is 'Floor number. The legacy floor column is retained for prototype compatibility.';
-comment on column housing_units.deposit_krw is 'Normalized deposit amount in KRW.';
-comment on column housing_units.monthly_rent_krw is 'Normalized monthly rent amount in KRW.';
-comment on column housing_units.source_span is 'Evidence pointer for the normalized unit record.';
-comment on column housing_units.qa_status is 'Promotion state for serving. Only QA-approved records should be exposed by default.';
-comment on column housing_units.raw_row is 'Raw XLSX row evidence for audit and reprocessing, not the primary query model.';
+comment on table offerings is 'Normalized offering records extracted from recruitment notices. An offering may represent one known unit or a group whose exact unit numbers are assigned later.';
+comment on column offerings.offering_type is 'Offering grain: unit for a specific unit or room, group for grouped supply by complex/type/area/count.';
+comment on column offerings.supply_category is 'Supply category such as 신규공급 or 재공급 when provided by the source.';
+comment on column offerings.list_no is 'Original row/list number from an offering list attachment.';
+comment on column offerings.district is 'Seoul district extracted from the address, such as 영등포구.';
+comment on column offerings.address is 'Full normalized address. This must not be left only in raw_row.';
+comment on column offerings.legal_dong is 'Legal dong candidate parsed from the address.';
+comment on column offerings.housing_name is 'Source housing name. This may overlap with complex_name in SH spreadsheets.';
+comment on column offerings.unit_no is 'Unit or room number inside a building. Null for group offerings whose unit numbers are assigned later.';
+comment on column offerings.floor_no is 'Floor number when the source provides it or it can be inferred from unit_no.';
+comment on column offerings.deposit_krw is 'Normalized deposit amount in KRW.';
+comment on column offerings.jeonse_deposit_krw is 'Normalized jeonse deposit amount in KRW when the offering is deposit-only.';
+comment on column offerings.monthly_rent_krw is 'Normalized monthly rent amount in KRW.';
+comment on column offerings.supply_count is 'Number of units represented by this offering. Unit offerings usually represent one unit; group offerings may represent many.';
+comment on column offerings.source_span is 'Evidence pointer for the normalized offering record.';
+comment on column offerings.qa_status is 'Promotion state for serving. Only QA-approved records should be exposed by default.';
+comment on column offerings.raw_row is 'Raw row evidence for audit and reprocessing, not the primary query model.';
 
 comment on table rent_conversion_rules is 'Notice-level rent conversion rules extracted from notice text or attachments.';
 comment on column rent_conversion_rules.rent_to_deposit_max_ratio is 'Maximum monthly rent ratio that can be converted into additional deposit. Example: 0.60.';
 comment on column rent_conversion_rules.rent_to_deposit_annual_rate is 'Annual conversion rate applied when monthly rent is converted to deposit. Example: 0.067.';
 comment on column rent_conversion_rules.deposit_per_rent_unit_krw is 'Additional deposit required per rent_unit_krw reduction in monthly rent.';
 
-comment on table housing_unit_conversion_estimates is 'Per-unit calculated estimates derived from rent conversion rules.';
-comment on column housing_unit_conversion_estimates.estimated_min_monthly_rent_krw is 'Estimated minimum monthly rent after maximum rent-to-deposit conversion.';
+comment on table offering_conversion_estimates is 'Per-offering calculated estimates derived from rent conversion rules.';
+comment on column offering_conversion_estimates.estimated_min_monthly_rent_krw is 'Estimated minimum monthly rent after maximum rent-to-deposit conversion.';
 
 comment on table notice_schedules is 'Structured notice schedules such as application, document submission, winner announcement, contract, and move-in.';
 comment on column notice_schedules.date_text is 'Original date expression retained for review when parsed timestamps are partial or ambiguous.';

@@ -93,7 +93,7 @@ func TestNewRootCommand_도메인서브커맨드Help가동작한다(t *testing.T
 		{"workflow", "--help"},
 		{"workflow", "collect-sh", "--help"},
 		{"qa", "--help"},
-		{"qa", "promote-units", "--help"},
+		{"qa", "promote-offerings", "--help"},
 	}
 
 	for _, args := range tests {
@@ -139,8 +139,8 @@ func TestNewRootCommand_QAHelp가승격명령을노출한다(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "promote-units") {
-		t.Fatalf("qa help = %q, want promote-units", out.String())
+	if !strings.Contains(out.String(), "promote-offerings") {
+		t.Fatalf("qa help = %q, want promote-offerings", out.String())
 	}
 }
 
@@ -159,14 +159,14 @@ func TestFormatCollectionSummary_QA승격결과를함께출력한다(t *testing.
 		Pending:  0,
 	})
 
-	want := "db stored_objects=31 extracted_artifacts=42 housing_units=28 inserted_artifacts=31 upserted_units=28 qa_approved=28 qa_rejected=0 qa_pending=0\n"
+	want := "db stored_objects=31 extracted_artifacts=42 offerings=28 inserted_artifacts=31 upserted_offerings=28 qa_approved=28 qa_rejected=0 qa_pending=0\n"
 	if got != want {
 		t.Fatalf("formatCollectionSummary() = %q, want %q", got, want)
 	}
 }
 
-func TestNormalizeHousingUnitsFromArtifacts_PDF신청주택표를정규화한다(t *testing.T) {
-	units := normalizeHousingUnitsFromArtifacts(extraction.AttachmentKindNoticePDF, []extraction.ExtractedArtifact{{
+func TestNormalizeOfferingsFromArtifacts_PDF신청주택표를정규화한다(t *testing.T) {
+	offerings := normalizeOfferingsFromArtifacts(extraction.AttachmentKindNoticePDF, []extraction.ExtractedArtifact{{
 		Type:       extraction.ArtifactTypePDFText,
 		SourceSpan: "pdf://sample.pdf",
 		RawText: `
@@ -178,16 +178,16 @@ func TestNormalizeHousingUnitsFromArtifacts_PDF신청주택표를정규화한다
 `,
 	}})
 
-	if len(units) != 1 {
-		t.Fatalf("normalizeHousingUnitsFromArtifacts() len = %d, want 1", len(units))
+	if len(offerings) != 1 {
+		t.Fatalf("normalizeOfferingsFromArtifacts() len = %d, want 1", len(offerings))
 	}
-	if units[0].UnitNo != "502호" {
-		t.Fatalf("UnitNo = %q", units[0].UnitNo)
+	if offerings[0].UnitNo != "502호" {
+		t.Fatalf("UnitNo = %q", offerings[0].UnitNo)
 	}
 }
 
 func TestNewRootCommand_ExtractXLSX_Artifact개수를출력한다(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "units.xlsx")
+	path := filepath.Join(t.TempDir(), "offerings.xlsx")
 	f := excelize.NewFile()
 	sheet := f.GetSheetName(0)
 	for r, row := range [][]any{{"동", "호"}, {"101", "1201"}} {
@@ -272,10 +272,10 @@ func TestCollectionRunStats_수집통계를구성한다(t *testing.T) {
 		"stopped_by_cutoff":  true,
 		"downloaded":         7,
 		"inserted_artifacts": 31,
-		"upserted_units":     25,
+		"upserted_offerings": 25,
 		"stored_objects":     int64(7),
 		"total_artifacts":    int64(31),
-		"total_units":        int64(25),
+		"total_offerings":    int64(25),
 	}
 	for key, want := range tests {
 		if got := stats[key]; got != want {

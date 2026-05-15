@@ -12,8 +12,8 @@ import (
 
 type fakeRepository struct{}
 
-func (fakeRepository) ListHousingUnits(ctx context.Context, limit int32, qaStatus string) ([]persistence.HousingUnitView, error) {
-	return []persistence.HousingUnitView{
+func (fakeRepository) ListOfferings(ctx context.Context, limit int32, qaStatus string) ([]persistence.OfferingView, error) {
+	return []persistence.OfferingView{
 		{ID: 1, Agency: "SH", HousingName: "청년주택", UnitNo: qaStatus, UnitType: "36A", SourceSpan: "xlsx://주택목록!2"},
 	}, nil
 }
@@ -43,9 +43,9 @@ func TestServer_Health(t *testing.T) {
 	}
 }
 
-func TestServer_Units(t *testing.T) {
+func TestServer_Offerings(t *testing.T) {
 	e := New(fakeRepository{})
-	req := httptest.NewRequest(http.MethodGet, "/units?limit=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/offerings?limit=1", nil)
 	rec := httptest.NewRecorder()
 
 	e.ServeHTTP(rec, req)
@@ -53,18 +53,18 @@ func TestServer_Units(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	var units []persistence.HousingUnitView
-	if err := json.Unmarshal(rec.Body.Bytes(), &units); err != nil {
+	var offerings []persistence.OfferingView
+	if err := json.Unmarshal(rec.Body.Bytes(), &offerings); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if len(units) != 1 || units[0].UnitNo != "approved" {
-		t.Fatalf("units = %+v", units)
+	if len(offerings) != 1 || offerings[0].UnitNo != "approved" {
+		t.Fatalf("offerings = %+v", offerings)
 	}
 }
 
-func TestServer_Units_QA상태를쿼리로지정한다(t *testing.T) {
+func TestServer_Offerings_QA상태를쿼리로지정한다(t *testing.T) {
 	e := New(fakeRepository{})
-	req := httptest.NewRequest(http.MethodGet, "/units?limit=1&qa_status=pending", nil)
+	req := httptest.NewRequest(http.MethodGet, "/offerings?limit=1&qa_status=pending", nil)
 	rec := httptest.NewRecorder()
 
 	e.ServeHTTP(rec, req)
@@ -72,11 +72,11 @@ func TestServer_Units_QA상태를쿼리로지정한다(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	var units []persistence.HousingUnitView
-	if err := json.Unmarshal(rec.Body.Bytes(), &units); err != nil {
+	var offerings []persistence.OfferingView
+	if err := json.Unmarshal(rec.Body.Bytes(), &offerings); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if len(units) != 1 || units[0].UnitNo != "pending" {
-		t.Fatalf("units = %+v", units)
+	if len(offerings) != 1 || offerings[0].UnitNo != "pending" {
+		t.Fatalf("offerings = %+v", offerings)
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"hic/pkg/extraction"
 )
 
-func TestInferHousingUnitsFromPDFText_신청주택표를주택후보로변환한다(t *testing.T) {
+func TestInferOfferingsFromPDFText_신청주택표를공급항목후보로변환한다(t *testing.T) {
 	artifact := extraction.ExtractedArtifact{
 		Type:       extraction.ArtifactTypePDFText,
 		SourceSpan: "pdf://sample.pdf",
@@ -49,12 +49,12 @@ func TestInferHousingUnitsFromPDFText_신청주택표를주택후보로변환한
 `,
 	}
 
-	units := InferHousingUnitsFromPDFText(artifact)
+	offerings := InferOfferingsFromPDFText(artifact)
 
-	if len(units) != 1 {
-		t.Fatalf("InferHousingUnitsFromPDFText() len = %d, want 1", len(units))
+	if len(offerings) != 1 {
+		t.Fatalf("InferOfferingsFromPDFText() len = %d, want 1", len(offerings))
 	}
-	got := units[0]
+	got := offerings[0]
 	if got.Address != "서울특별시 금천구 시흥대로88길 18" {
 		t.Fatalf("Address = %q", got.Address)
 	}
@@ -75,7 +75,7 @@ func TestInferHousingUnitsFromPDFText_신청주택표를주택후보로변환한
 	}
 }
 
-func TestInferHousingUnitsFromPDFText_공급주택표는이전주소필드를무시한다(t *testing.T) {
+func TestInferOfferingsFromPDFText_공급주택표는이전주소필드를무시한다(t *testing.T) {
 	artifact := extraction.ExtractedArtifact{
 		Type:       extraction.ArtifactTypePDFText,
 		SourceSpan: "pdf://supply.pdf",
@@ -128,12 +128,12 @@ func TestInferHousingUnitsFromPDFText_공급주택표는이전주소필드를무
 `,
 	}
 
-	units := InferHousingUnitsFromPDFText(artifact)
+	offerings := InferOfferingsFromPDFText(artifact)
 
-	if len(units) != 1 {
-		t.Fatalf("InferHousingUnitsFromPDFText() len = %d, want 1", len(units))
+	if len(offerings) != 1 {
+		t.Fatalf("InferOfferingsFromPDFText() len = %d, want 1", len(offerings))
 	}
-	got := units[0]
+	got := offerings[0]
 	if got.Address != "서울특별시 금천구 시흥대로88길 18, 소담빌라" {
 		t.Fatalf("Address = %q", got.Address)
 	}
@@ -151,13 +151,13 @@ func TestInferHousingUnitsFromPDFText_공급주택표는이전주소필드를무
 	}
 }
 
-func TestInferHousingUnitsFromPDFText_PDFText가아니면무시한다(t *testing.T) {
-	units := InferHousingUnitsFromPDFText(extraction.ExtractedArtifact{
+func TestInferOfferingsFromPDFText_PDFText가아니면무시한다(t *testing.T) {
+	offerings := InferOfferingsFromPDFText(extraction.ExtractedArtifact{
 		Type:    extraction.ArtifactTypeXLSXRow,
 		RawText: "신청 주택 주소 서울특별시 금천구 시흥대로 88 길 18 공급호실 502 호",
 	})
 
-	if len(units) != 0 {
-		t.Fatalf("InferHousingUnitsFromPDFText() len = %d, want 0", len(units))
+	if len(offerings) != 0 {
+		t.Fatalf("InferOfferingsFromPDFText() len = %d, want 0", len(offerings))
 	}
 }

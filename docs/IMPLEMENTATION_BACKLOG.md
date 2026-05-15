@@ -69,7 +69,7 @@ Tasks:
   - attachments
   - stored objects
   - extracted artifacts
-  - housing units
+  - offerings
   - rent conversion rules
   - housing unit conversion estimates
   - notice schedules
@@ -147,7 +147,7 @@ Tasks:
 
 - Build `pkg/normalize`.
 - Normalize notice metadata.
-- Normalize housing units.
+- Normalize offerings.
 - Normalize address, district, legal dong, housing name, building name, unit number, floor.
 - Normalize exclusive area and pyeong.
 - Normalize deposit and monthly rent as numeric KRW.
@@ -160,7 +160,7 @@ Acceptance checks:
 
 ```bash
 hic normalize notice --id 123
-hic normalize units --attachment-id 123
+hic normalize offerings --attachment-id 123
 hic normalize schedules --notice-id 123
 hic normalize conversion --notice-id 123
 go test ./pkg/normalize/...
@@ -215,7 +215,7 @@ Goal: expose normalized records, not raw blobs.
 Tasks:
 
 - Keep Echo for API.
-- Expose notices, housing units, conversion rules, schedules, and source evidence.
+- Expose notices, offerings, conversion rules, schedules, and source evidence.
 - Ensure API defaults to QA-approved serving data.
 - Keep raw artifacts available only for audit/debug endpoints.
 
@@ -225,7 +225,7 @@ Acceptance checks:
 hic serve
 curl http://localhost:9552/health
 curl http://localhost:9552/notices
-curl http://localhost:9552/units
+curl http://localhost:9552/offerings
 ```
 
 ## First Implementation Recommendation

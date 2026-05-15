@@ -9,7 +9,7 @@ func TestClassifyAttachment_첨부역할을분류한다(t *testing.T) {
 		want     AttachmentKind
 	}{
 		{name: "공고문PDF", filename: "[공고문] 휘경마을 두레주택 모집공고.pdf", want: AttachmentKindNoticePDF},
-		{name: "주택목록XLSX", filename: "붙임1 주택목록.xlsx", want: AttachmentKindHousingUnitListXLSX},
+		{name: "주택목록XLSX", filename: "붙임1 주택목록.xlsx", want: AttachmentKindOfferingListXLSX},
 		{name: "당첨자명단", filename: "청년 매입임대주택 당첨자 명단.xlsx", want: AttachmentKindApplicantOrWinnerFile},
 		{name: "예비자명단", filename: "예비자 명단.pdf", want: AttachmentKindApplicantOrWinnerFile},
 		{name: "신청서", filename: "입주신청서.hwp", want: AttachmentKindApplicationForm},

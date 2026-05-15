@@ -111,16 +111,16 @@ func ParseBoardDetail(r io.Reader) (BoardDetail, error) {
 	}
 
 	detail := BoardDetail{
-		Title:       extractTableValue(doc, "제목"),
+		Title:       extractDetailTitle(doc),
 		BodyText:    cleanText(doc.Find(".cont").First().Text()),
-		ViewCount:   parseInt(stripComma(extractTableValue(doc, "조회수"))),
+		ViewCount:   parseInt(stripComma(firstNonEmpty(extractTableValue(doc, "조회수"), extractInlineLabelValue(doc, "조회수")))),
 		Attachments: parseDownList(html),
 	}
 
 	if detail.BodyText == "" {
 		detail.BodyText = cleanText(doc.Find("td").Last().Text())
 	}
-	if posted, err := time.Parse(time.DateOnly, extractTableValue(doc, "작성일")); err == nil {
+	if posted, err := time.Parse(time.DateOnly, firstNonEmpty(extractTableValue(doc, "작성일"), extractInlineLabelValue(doc, "등록일"))); err == nil {
 		detail.PostedAt = &posted
 	}
 
@@ -143,6 +143,31 @@ func ParseBoardDetail(r io.Reader) (BoardDetail, error) {
 	}
 
 	return detail, nil
+}
+
+func extractDetailTitle(doc *goquery.Document) string {
+	return firstNonEmpty(
+		extractTableValue(doc, "제목"),
+		cleanText(doc.Find(".detailTable caption").First().Text()),
+		cleanText(doc.Find(".detailTable thead th").First().Text()),
+		cleanText(doc.Find("caption").First().Text()),
+		cleanText(doc.Find("thead th").First().Text()),
+	)
+}
+
+func extractInlineLabelValue(doc *goquery.Document, label string) string {
+	var value string
+	doc.Find("li").EachWithBreak(func(_ int, li *goquery.Selection) bool {
+		text := cleanText(li.Text())
+		for _, prefix := range []string{label + " :", label + ":", label + "："} {
+			if strings.HasPrefix(text, prefix) {
+				value = strings.TrimSpace(strings.TrimPrefix(text, prefix))
+				return false
+			}
+		}
+		return true
+	})
+	return value
 }
 
 func parseDownList(html string) []AttachmentMeta {
