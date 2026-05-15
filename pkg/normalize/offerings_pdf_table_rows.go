@@ -15,6 +15,7 @@ func InferOfferingsFromPDFTableRows(artifacts []extraction.ExtractedArtifact) []
 		unitNo := contentString(artifact.Content, "unit_no")
 		depositText := contentString(artifact.Content, "deposit_text")
 		jeonseDepositText := contentString(artifact.Content, "jeonse_deposit_text")
+		moneyUnit := contentString(artifact.Content, "money_unit")
 		rentText := contentString(artifact.Content, "monthly_rent_text")
 		address := contentString(artifact.Content, "address")
 		district := contentString(artifact.Content, "district")
@@ -44,9 +45,9 @@ func InferOfferingsFromPDFTableRows(artifacts []extraction.ExtractedArtifact) []
 			DepositText:          depositText,
 			DepositKRW:           parseKRWPtr(depositText),
 			JeonseDepositText:    jeonseDepositText,
-			JeonseDepositKRW:     parseKRWPtr(jeonseDepositText),
-			ContractDepositKRW:   parseKRWPtr(contentString(artifact.Content, "contract_deposit_text")),
-			BalancePaymentKRW:    parseKRWPtr(contentString(artifact.Content, "balance_payment_text")),
+			JeonseDepositKRW:     parseMoneyPtr(jeonseDepositText, moneyUnit),
+			ContractDepositKRW:   parseMoneyPtr(contentString(artifact.Content, "contract_deposit_text"), moneyUnit),
+			BalancePaymentKRW:    parseMoneyPtr(contentString(artifact.Content, "balance_payment_text"), moneyUnit),
 			MonthlyRentText:      rentText,
 			MonthlyRentKRW:       parseKRWPtr(rentText),
 			SupplyCount:          supplyCount,

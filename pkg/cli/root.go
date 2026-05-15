@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -553,8 +554,37 @@ func newQACommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	}
 	cmd.AddCommand(
 		placeholderCommand("sample", "샘플 QA 케이스를 실행합니다"),
+		newQAPDFOfferingsCommand(),
 		newQAPromoteOfferingsCommand(ctx, cfg),
 	)
+	return cmd
+}
+
+func newQAPDFOfferingsCommand() *cobra.Command {
+	var file string
+	var debugText bool
+	cmd := &cobra.Command{
+		Use:   "pdf-offerings",
+		Short: "PDF 파일에서 공급항목 후보를 추출해 검증용 표로 출력합니다",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(file) == "" {
+				return fmt.Errorf("--file is required")
+			}
+			artifacts, err := extraction.ExtractPDFArtifacts(file)
+			if err != nil {
+				return err
+			}
+			if debugText {
+				fmt.Fprint(cmd.OutOrStdout(), formatPDFDebugText(artifacts))
+			}
+			offerings := normalizeOfferingsFromArtifacts(extraction.AttachmentKindNoticePDF, artifacts)
+			fmt.Fprintf(cmd.OutOrStdout(), "file=%s artifacts=%d ", filepath.Clean(file), len(artifacts))
+			fmt.Fprint(cmd.OutOrStdout(), formatPDFOfferings(offerings))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "PDF 파일 경로")
+	cmd.Flags().BoolVar(&debugText, "debug-text", false, "PDF 추출 원문에서 공급 관련 스니펫을 함께 출력합니다")
 	return cmd
 }
 
@@ -586,6 +616,93 @@ func formatQASummary(summary persistence.QASummary) string {
 		summary.Rejected,
 		summary.Pending,
 	)
+}
+
+func formatPDFOfferings(offerings []normalize.OfferingCandidate) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "offerings=%d\n", len(offerings))
+	if len(offerings) == 0 {
+		b.WriteString("no offerings extracted\n")
+		return b.String()
+	}
+	b.WriteString("| # | 신청 가능 단위 | 주택명 | 호실 | 면적(㎡) | 공급호수 | 전세금액 | 보증금 | 월임대료 | 기숙사비 | 성별 | source | confidence |\n")
+	b.WriteString("|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|---:|\n")
+	for i, offering := range offerings {
+		fmt.Fprintf(
+			&b,
+			"| %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %.2f |\n",
+			i+1,
+			tableCell(offering.ApplicationUnitLabel),
+			tableCell(firstNonEmptyString(offering.HousingName, offering.ComplexName)),
+			tableCell(offering.UnitNo),
+			floatPtrString(offering.ExclusiveAreaM2),
+			intPtrString(offering.SupplyCount),
+			int64PtrString(offering.JeonseDepositKRW),
+			int64PtrString(offering.DepositKRW),
+			int64PtrString(offering.MonthlyRentKRW),
+			int64PtrString(offering.DormitoryFeeKRW),
+			tableCell(offering.GenderRequirement),
+			tableCell(offering.SourceSpan),
+			offering.Confidence,
+		)
+	}
+	return b.String()
+}
+
+func formatPDFDebugText(artifacts []extraction.ExtractedArtifact) string {
+	for _, artifact := range artifacts {
+		if artifact.Type != extraction.ArtifactTypePDFText {
+			continue
+		}
+		text := strings.TrimSpace(strings.Join(strings.Fields(strings.ReplaceAll(artifact.RawText, "\x00", "")), " "))
+		for _, keyword := range []string{"공급대상", "공급 대상", "공급현황", "주택명"} {
+			index := strings.Index(text, keyword)
+			if index < 0 {
+				continue
+			}
+			start := index - 400
+			if start < 0 {
+				start = 0
+			}
+			end := index + 1600
+			if end > len(text) {
+				end = len(text)
+			}
+			return fmt.Sprintf("debug_text keyword=%q\n%s\n", keyword, text[start:end])
+		}
+		return fmt.Sprintf("debug_text chars=%d keyword_not_found\n", len([]rune(text)))
+	}
+	return "debug_text pdf_text_artifact_not_found\n"
+}
+
+func tableCell(value string) string {
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, "|", "\\|")
+	return strings.TrimSpace(value)
+}
+
+func floatPtrString(value *float64) string {
+	if value == nil {
+		return ""
+	}
+	if *value == float64(int64(*value)) {
+		return fmt.Sprintf("%.0f", *value)
+	}
+	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.2f", *value), "0"), ".")
+}
+
+func intPtrString(value *int) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *value)
+}
+
+func int64PtrString(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d", *value)
 }
 
 func placeholderCommand(use string, short string) *cobra.Command {

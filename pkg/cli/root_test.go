@@ -9,6 +9,7 @@ import (
 
 	"hic/pkg/discovery"
 	"hic/pkg/extraction"
+	"hic/pkg/normalize"
 	"hic/pkg/persistence"
 
 	"github.com/xuri/excelize/v2"
@@ -94,6 +95,7 @@ func TestNewRootCommand_도메인서브커맨드Help가동작한다(t *testing.T
 		{"workflow", "collect-sh", "--help"},
 		{"qa", "--help"},
 		{"qa", "promote-offerings", "--help"},
+		{"qa", "pdf-offerings", "--help"},
 	}
 
 	for _, args := range tests {
@@ -142,6 +144,9 @@ func TestNewRootCommand_QAHelp가승격명령을노출한다(t *testing.T) {
 	if !strings.Contains(out.String(), "promote-offerings") {
 		t.Fatalf("qa help = %q, want promote-offerings", out.String())
 	}
+	if !strings.Contains(out.String(), "pdf-offerings") {
+		t.Fatalf("qa help = %q, want pdf-offerings", out.String())
+	}
 }
 
 func TestFormatQASummary_승격결과를출력한다(t *testing.T) {
@@ -149,6 +154,35 @@ func TestFormatQASummary_승격결과를출력한다(t *testing.T) {
 
 	if got != "qa approved=25 rejected=2 pending=1\n" {
 		t.Fatalf("formatQASummary() = %q", got)
+	}
+}
+
+func TestFormatPDFOfferings_공급항목을마크다운표로출력한다(t *testing.T) {
+	count := 34
+	area := 59.0
+	jeonse := int64(514020000)
+	offering := normalize.OfferingCandidate{
+		ApplicationUnitLabel: "세곡2지구 59㎡ 일반 여성",
+		HousingName:          "세곡2지구",
+		UnitNo:               "",
+		ExclusiveAreaM2:      &area,
+		SupplyCount:          &count,
+		JeonseDepositKRW:     &jeonse,
+		GenderRequirement:    "여성",
+		SourceSpan:           "pdf://sample.pdf#table=1&row=1",
+		Confidence:           0.82,
+	}
+
+	got := formatPDFOfferings([]normalize.OfferingCandidate{offering})
+
+	for _, want := range []string{
+		"offerings=1",
+		"| # | 신청 가능 단위 | 주택명 | 호실 | 면적(㎡) | 공급호수 | 전세금액 | 보증금 | 월임대료 | 기숙사비 | 성별 | source | confidence |",
+		"| 1 | 세곡2지구 59㎡ 일반 여성 | 세곡2지구 |  | 59 | 34 | 514020000 |  |  |  | 여성 | pdf://sample.pdf#table=1&row=1 | 0.82 |",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("formatPDFOfferings() missing %q:\n%s", want, got)
+		}
 	}
 }
 

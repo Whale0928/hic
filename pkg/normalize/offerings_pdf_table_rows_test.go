@@ -46,3 +46,40 @@ func TestInferOfferingsFromPDFTableRows_표행을공급항목후보로변환한�
 		t.Fatalf("SourcePage = %d, want 2", got.SourcePage)
 	}
 }
+
+func TestInferOfferingsFromPDFTableRows_천원단위전세금액을원단위로변환한다(t *testing.T) {
+	artifacts := []extraction.ExtractedArtifact{
+		{
+			Type:       extraction.ArtifactTypePDFTableRow,
+			SourceRow:  1,
+			SourceSpan: "pdf://longterm.pdf#table=long_term_jeonse&row=1",
+			Content: map[string]any{
+				"housing_name":          "세곡2지구",
+				"exclusive_area_m2":     "59",
+				"application_category":  "일반",
+				"supply_count":          "34",
+				"jeonse_deposit_text":   "514,020",
+				"contract_deposit_text": "51,402",
+				"balance_payment_text":  "462,618",
+				"money_unit":            "천원",
+			},
+			Confidence: 0.78,
+		},
+	}
+
+	offerings := InferOfferingsFromPDFTableRows(artifacts)
+
+	if len(offerings) != 1 {
+		t.Fatalf("InferOfferingsFromPDFTableRows() len = %d, want 1", len(offerings))
+	}
+	got := offerings[0]
+	if got.JeonseDepositKRW == nil || *got.JeonseDepositKRW != 514020000 {
+		t.Fatalf("JeonseDepositKRW = %v", got.JeonseDepositKRW)
+	}
+	if got.ContractDepositKRW == nil || *got.ContractDepositKRW != 51402000 {
+		t.Fatalf("ContractDepositKRW = %v", got.ContractDepositKRW)
+	}
+	if got.BalancePaymentKRW == nil || *got.BalancePaymentKRW != 462618000 {
+		t.Fatalf("BalancePaymentKRW = %v", got.BalancePaymentKRW)
+	}
+}
