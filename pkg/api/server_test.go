@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -84,13 +85,13 @@ func TestServer_Offerings_QA상태를쿼리로지정한다(t *testing.T) {
 	}
 }
 
-func TestServer_Resources_HTML리포트를제공한다(t *testing.T) {
-	resourcesDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(resourcesDir, "pdf-offerings.html"), []byte("<html><body>PDF report</body></html>"), 0o644); err != nil {
+func TestServer_Display_HTML앱을제공한다(t *testing.T) {
+	displayDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(displayDir, "index.html"), []byte("<html><body>HIC display</body></html>"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	e := NewWithResources(fakeRepository{}, resourcesDir)
-	req := httptest.NewRequest(http.MethodGet, "/resources/pdf-offerings.html", nil)
+	e := NewWithDisplay(fakeRepository{}, displayDir)
+	req := httptest.NewRequest(http.MethodGet, "/display/index.html", nil)
 	rec := httptest.NewRecorder()
 
 	e.ServeHTTP(rec, req)
@@ -98,19 +99,18 @@ func TestServer_Resources_HTML리포트를제공한다(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "PDF report") {
-		t.Fatalf("body = %q, want PDF report", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "HIC display") {
+		t.Fatalf("body = %q, want HIC display", rec.Body.String())
 	}
 }
 
-func TestServer_PDFOfferingsReport_JSON리포트를제공한다(t *testing.T) {
-	resourcesDir := t.TempDir()
-	report := []byte(`{"generated_at":"2026-05-15T00:00:00Z","offerings":[{"housing_name":"정릉 희망하우징"}]}`)
-	if err := os.WriteFile(filepath.Join(resourcesDir, "pdf-offerings.json"), report, 0o644); err != nil {
+func TestServer_PDFOfferingsReport_PDF를실제로추출해JSON으로제공한다(t *testing.T) {
+	pdfPath := filepath.Join(t.TempDir(), "sample.pdf")
+	if err := os.WriteFile(pdfPath, minimalPDF("Hello HIC"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	e := NewWithResources(fakeRepository{}, resourcesDir)
-	req := httptest.NewRequest(http.MethodGet, "/reports/pdf-offerings", nil)
+	e := NewWithDisplay(fakeRepository{}, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/reports/pdf-offerings?file="+pdfPath, nil)
 	rec := httptest.NewRecorder()
 
 	e.ServeHTTP(rec, req)
@@ -121,7 +121,73 @@ func TestServer_PDFOfferingsReport_JSON리포트를제공한다(t *testing.T) {
 	if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
 		t.Fatalf("Content-Type = %q, want application/json", got)
 	}
-	if !strings.Contains(rec.Body.String(), "정릉 희망하우징") {
-		t.Fatalf("body = %q, want report json", rec.Body.String())
+	var body struct {
+		Totals struct {
+			Files     int `json:"files"`
+			Artifacts int `json:"artifacts"`
+			Offerings int `json:"offerings"`
+		} `json:"totals"`
 	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Unmarshal() error = %v: %s", err, rec.Body.String())
+	}
+	if body.Totals.Files != 1 || body.Totals.Artifacts != 1 || body.Totals.Offerings != 0 {
+		t.Fatalf("totals = %+v", body.Totals)
+	}
+}
+
+func TestServer_PDFOfferingsReport_파일파라미터를요구한다(t *testing.T) {
+	e := NewWithDisplay(fakeRepository{}, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/reports/pdf-offerings", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func minimalPDF(text string) []byte {
+	stream := "BT /F1 24 Tf 100 700 Td (" + text + ") Tj ET"
+	objects := []string{
+		`<< /Type /Catalog /Pages 2 0 R >>`,
+		`<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,
+		`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
+		`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`,
+		"<< /Length " + strconv.Itoa(len(stream)) + " >>\nstream\n" + stream + "\nendstream",
+	}
+
+	var b strings.Builder
+	b.WriteString("%PDF-1.4\n")
+	offsets := make([]int, len(objects)+1)
+	for i, obj := range objects {
+		offsets[i+1] = b.Len()
+		b.WriteString(strconv.Itoa(i + 1))
+		b.WriteString(" 0 obj\n")
+		b.WriteString(obj)
+		b.WriteString("\nendobj\n")
+	}
+	xrefOffset := b.Len()
+	b.WriteString("xref\n0 ")
+	b.WriteString(strconv.Itoa(len(objects) + 1))
+	b.WriteString("\n0000000000 65535 f \n")
+	for i := 1; i < len(offsets); i++ {
+		b.WriteString(leftPadInt(offsets[i], 10))
+		b.WriteString(" 00000 n \n")
+	}
+	b.WriteString("trailer\n<< /Size ")
+	b.WriteString(strconv.Itoa(len(objects) + 1))
+	b.WriteString(" /Root 1 0 R >>\nstartxref\n")
+	b.WriteString(strconv.Itoa(xrefOffset))
+	b.WriteString("\n%%EOF\n")
+	return []byte(b.String())
+}
+
+func leftPadInt(n int, width int) string {
+	value := strconv.Itoa(n)
+	for len(value) < width {
+		value = "0" + value
+	}
+	return value
 }

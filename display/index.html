@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HIC PDF 공급항목 조회</title>
+  <link rel="stylesheet" href="/display/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>PDF 공급항목 조회</h1>
+      <p>브라우저가 localhost API를 호출해 PDF에서 추출한 공급항목을 조회합니다.</p>
+    </div>
+    <button id="refreshButton" type="button">새로 조회</button>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>조회 대상 PDF</h2>
+        <span id="apiStatus">대기 중</span>
+      </div>
+      <textarea id="fileInput" spellcheck="false"></textarea>
+      <p class="hint">한 줄에 하나씩 로컬 PDF 절대 경로를 입력합니다. 이 값은 서버 API의 file 파라미터로 전달됩니다.</p>
+    </section>
+
+    <section class="stats" id="stats"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>공급항목</h2>
+        <input id="searchInput" type="search" placeholder="주택명, 신청 가능 단위, 성별 검색">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>PDF</th>
+              <th>신청 가능 단위</th>
+              <th>주택명</th>
+              <th class="num">면적</th>
+              <th class="num">공급</th>
+              <th class="num">전세금액</th>
+              <th class="num">보증금</th>
+              <th class="num">월임대료</th>
+              <th class="num">기숙사비</th>
+              <th>성별</th>
+              <th class="num">신뢰도</th>
+            </tr>
+          </thead>
+          <tbody id="offeringsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/display/app.js"></script>
+</body>
+</html>
