@@ -22,11 +22,14 @@ func NewRootCommand(ctx context.Context) *cobra.Command {
 	cfg := global.FromEnv()
 	root := &cobra.Command{
 		Use:          "hic",
-		Short:        "House Information Collector",
+		Short:        "공공주택 모집공고 수집/정규화 도구",
 		SilenceUsage: true,
 	}
+	root.CompletionOptions.DisableDefaultCmd = true
+	root.SetHelpCommand(newHelpCommand())
 
 	root.AddCommand(
+		newCompletionCommand(),
 		newMigrateCommand(ctx, cfg),
 		newServeCommand(ctx, cfg),
 		newDiscoveryCommand(ctx, cfg),
@@ -44,7 +47,7 @@ func newServeCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	var addr string
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Start the HIC HTTP API",
+		Short: "HIC HTTP API 서버를 시작합니다",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, err := persistence.Open(ctx, cfg.DatabaseURL)
 			if err != nil {
@@ -54,14 +57,14 @@ func newServeCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 			return api.New(repo).Start(addr)
 		},
 	}
-	cmd.Flags().StringVar(&addr, "addr", ":9552", "HTTP listen address")
+	cmd.Flags().StringVar(&addr, "addr", ":9552", "HTTP 수신 주소")
 	return cmd
 }
 
 func newMigrateCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "migrate",
-		Short: "Run PostgreSQL schema migration",
+		Short: "PostgreSQL 스키마 마이그레이션을 실행합니다",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return persistence.Migrate(ctx, cfg.DatabaseURL)
 		},
@@ -71,7 +74,7 @@ func newMigrateCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 func newDiscoveryCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "discovery",
-		Short: "Discover recruitment notice candidates",
+		Short: "모집공고 후보를 발견합니다",
 	}
 
 	var boardKind string
@@ -83,7 +86,7 @@ func newDiscoveryCommand(ctx context.Context, cfg global.Config) *cobra.Command 
 	var skipExisting bool
 	shCmd := &cobra.Command{
 		Use:   "sh",
-		Short: "Discover notices from SH boards",
+		Short: "SH 게시판에서 모집공고 후보를 발견합니다",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !dryRun {
 				return fmt.Errorf("discovery persistence is not implemented yet; use --dry-run")
@@ -110,13 +113,13 @@ func newDiscoveryCommand(ctx context.Context, cfg global.Config) *cobra.Command 
 			return nil
 		},
 	}
-	shCmd.Flags().StringVar(&boardKind, "board", "rental", "SH board kind: rental or sale")
-	shCmd.Flags().IntVar(&pages, "pages", 1, "number of board pages to inspect")
-	shCmd.Flags().StringVar(&seqs, "seq", "", "comma-separated source notice sequence filter")
-	shCmd.Flags().BoolVar(&dryRun, "dry-run", true, "report candidates without persistence")
-	shCmd.Flags().BoolVar(&showAttachments, "show-attachments", false, "print candidate attachment metadata")
-	shCmd.Flags().IntVar(&maxAgeDays, "max-age-days", 30, "skip notices posted before this many days ago; set 0 to disable")
-	shCmd.Flags().BoolVar(&skipExisting, "skip-existing", false, "read PostgreSQL and skip already collected recruitment notices")
+	shCmd.Flags().StringVar(&boardKind, "board", "rental", "SH 게시판 종류: rental 또는 sale")
+	shCmd.Flags().IntVar(&pages, "pages", 1, "조회할 게시판 페이지 수")
+	shCmd.Flags().StringVar(&seqs, "seq", "", "쉼표로 구분한 원본 공고 seq 필터")
+	shCmd.Flags().BoolVar(&dryRun, "dry-run", true, "DB 저장 없이 후보만 보고합니다")
+	shCmd.Flags().BoolVar(&showAttachments, "show-attachments", false, "후보 첨부 메타데이터를 출력합니다")
+	shCmd.Flags().IntVar(&maxAgeDays, "max-age-days", 30, "지정 일수보다 오래된 공고는 제외합니다. 0이면 비활성화합니다")
+	shCmd.Flags().BoolVar(&skipExisting, "skip-existing", false, "PostgreSQL을 조회해 이미 수집한 모집공고를 건너뜁니다")
 	cmd.AddCommand(shCmd)
 
 	return cmd
@@ -139,6 +142,64 @@ func cutoffDate(maxAgeDays int) time.Time {
 		return time.Time{}
 	}
 	return time.Now().AddDate(0, 0, -maxAgeDays)
+}
+
+func newCompletionCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "completion",
+		Short: "지정한 셸의 자동완성 스크립트를 생성합니다",
+		Long:  "bash, zsh, fish, powershell용 자동완성 스크립트를 생성합니다.",
+	}
+	cmd.AddCommand(
+		&cobra.Command{
+			Use:   "bash",
+			Short: "bash 자동완성 스크립트를 생성합니다",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return cmd.Root().GenBashCompletionV2(cmd.OutOrStdout(), true)
+			},
+		},
+		&cobra.Command{
+			Use:   "zsh",
+			Short: "zsh 자동완성 스크립트를 생성합니다",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return cmd.Root().GenZshCompletion(cmd.OutOrStdout())
+			},
+		},
+		&cobra.Command{
+			Use:   "fish",
+			Short: "fish 자동완성 스크립트를 생성합니다",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return cmd.Root().GenFishCompletion(cmd.OutOrStdout(), true)
+			},
+		},
+		&cobra.Command{
+			Use:   "powershell",
+			Short: "PowerShell 자동완성 스크립트를 생성합니다",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return cmd.Root().GenPowerShellCompletionWithDesc(cmd.OutOrStdout())
+			},
+		},
+	)
+	return cmd
+}
+
+func newHelpCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "help [command]",
+		Short: "명령 도움말을 표시합니다",
+		Long:  "지정한 명령의 상세 도움말을 표시합니다.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target, _, err := cmd.Root().Find(args)
+			if err != nil || target == nil {
+				return fmt.Errorf("알 수 없는 도움말 주제: %s", strings.Join(args, " "))
+			}
+			return target.Help()
+		},
+	}
 }
 
 func collectionRunStats(report discovery.Report, downloaded int, insertedArtifacts int, upsertedUnits int, storedObjects int64, totalArtifacts int64, totalUnits int64) map[string]any {
@@ -195,10 +256,10 @@ func firstNonEmptyString(values ...string) string {
 func newExtractCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "extract",
-		Short: "Extract mechanical artifacts from attachments",
+		Short: "첨부 원본에서 기계 추출 artifact를 생성합니다",
 	}
 	cmd.AddCommand(
-		placeholderCommand("attachment", "Extract a stored attachment"),
+		placeholderCommand("attachment", "저장된 첨부 원본을 추출합니다"),
 		newExtractPDFCommand(),
 		newExtractXLSXCommand(),
 	)
@@ -209,7 +270,7 @@ func newExtractPDFCommand() *cobra.Command {
 	var file string
 	cmd := &cobra.Command{
 		Use:   "pdf",
-		Short: "Extract text from a PDF file",
+		Short: "PDF 파일에서 텍스트를 추출합니다",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if file == "" {
 				return fmt.Errorf("--file is required")
@@ -222,7 +283,7 @@ func newExtractPDFCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "PDF file path")
+	cmd.Flags().StringVar(&file, "file", "", "PDF 파일 경로")
 	return cmd
 }
 
@@ -230,7 +291,7 @@ func newExtractXLSXCommand() *cobra.Command {
 	var file string
 	cmd := &cobra.Command{
 		Use:   "xlsx",
-		Short: "Extract rows from an XLSX file",
+		Short: "XLSX 파일에서 행 artifact를 추출합니다",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if file == "" {
 				return fmt.Errorf("--file is required")
@@ -243,20 +304,20 @@ func newExtractXLSXCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&file, "file", "", "XLSX file path")
+	cmd.Flags().StringVar(&file, "file", "", "XLSX 파일 경로")
 	return cmd
 }
 
 func newNormalizeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "normalize",
-		Short: "Normalize extracted artifacts into domain records",
+		Short: "추출 artifact를 도메인 레코드로 정규화합니다",
 	}
 	cmd.AddCommand(
-		placeholderCommand("notice", "Normalize notice metadata"),
-		placeholderCommand("units", "Normalize housing units"),
-		placeholderCommand("schedules", "Normalize notice schedules"),
-		placeholderCommand("conversion", "Normalize rent conversion rules"),
+		placeholderCommand("notice", "공고 메타데이터를 정규화합니다"),
+		placeholderCommand("units", "주택 unit을 정규화합니다"),
+		placeholderCommand("schedules", "공고 일정을 정규화합니다"),
+		placeholderCommand("conversion", "임대료-보증금 전환 규칙을 정규화합니다"),
 	)
 	return cmd
 }
@@ -264,16 +325,16 @@ func newNormalizeCommand() *cobra.Command {
 func newLLMCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "llm",
-		Short: "Repair low-confidence artifacts with constrained LLM assistance",
+		Short: "낮은 신뢰도의 artifact를 LLM 보조로 보정합니다",
 	}
-	cmd.AddCommand(placeholderCommand("repair", "Run LLM repair for an artifact"))
+	cmd.AddCommand(placeholderCommand("repair", "artifact LLM 보정을 실행합니다"))
 	return cmd
 }
 
 func newWorkflowCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workflow",
-		Short: "Orchestrate discovery, extraction, normalization, and QA",
+		Short: "discovery, extraction, normalization, QA를 오케스트레이션합니다",
 	}
 	cmd.AddCommand(newWorkflowCollectSHCommand())
 	return cmd
@@ -291,7 +352,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "collect-sh",
-		Short: "Run the SH collection workflow",
+		Short: "SH 수집 워크플로우를 실행합니다",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			registry := discovery.NewStaticSiteRegistry()
 			board, ok := registry.Get("SH", boardKind)
@@ -406,14 +467,14 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&boardKind, "board", "rental", "SH board kind: rental or sale")
-	cmd.Flags().IntVar(&pages, "pages", 1, "number of board pages to inspect")
-	cmd.Flags().StringVar(&seqs, "seq", "", "comma-separated source notice sequence filter")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "discover candidates without preserving attachments")
-	cmd.Flags().BoolVar(&preserveAttachments, "preserve-attachments", false, "download and preserve candidate attachments")
-	cmd.Flags().StringVar(&objectRoot, "object-root", ".data/objects", "local ObjectStore root directory")
-	cmd.Flags().IntVar(&maxAgeDays, "max-age-days", 30, "skip notices posted before this many days ago; set 0 to disable")
-	cmd.Flags().BoolVar(&skipExisting, "skip-existing", true, "skip already collected recruitment notices when --seq is not set")
+	cmd.Flags().StringVar(&boardKind, "board", "rental", "SH 게시판 종류: rental 또는 sale")
+	cmd.Flags().IntVar(&pages, "pages", 1, "조회할 게시판 페이지 수")
+	cmd.Flags().StringVar(&seqs, "seq", "", "쉼표로 구분한 원본 공고 seq 필터")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "첨부 보존 없이 후보만 발견합니다")
+	cmd.Flags().BoolVar(&preserveAttachments, "preserve-attachments", false, "후보 첨부를 다운로드하고 보존합니다")
+	cmd.Flags().StringVar(&objectRoot, "object-root", ".data/objects", "로컬 ObjectStore 루트 디렉터리")
+	cmd.Flags().IntVar(&maxAgeDays, "max-age-days", 30, "지정 일수보다 오래된 공고는 제외합니다. 0이면 비활성화합니다")
+	cmd.Flags().BoolVar(&skipExisting, "skip-existing", true, "--seq가 없을 때 이미 수집한 모집공고를 건너뜁니다")
 	return cmd
 }
 
@@ -469,10 +530,10 @@ func extractPreservedAttachment(objectStore extraction.LocalObjectStore, attachm
 func newQACommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "qa",
-		Short: "Run quality gates and sample regression checks",
+		Short: "품질 게이트와 샘플 회귀 검사를 실행합니다",
 	}
 	cmd.AddCommand(
-		placeholderCommand("sample", "Run a sample QA case"),
+		placeholderCommand("sample", "샘플 QA 케이스를 실행합니다"),
 		newQAPromoteUnitsCommand(ctx, cfg),
 	)
 	return cmd
@@ -481,7 +542,7 @@ func newQACommand(ctx context.Context, cfg global.Config) *cobra.Command {
 func newQAPromoteUnitsCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	return &cobra.Command{
 		Use:   "promote-units",
-		Short: "Promote pending housing units that pass QA",
+		Short: "QA를 통과한 pending 주택 unit을 승인합니다",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repo, err := persistence.Open(ctx, cfg.DatabaseURL)
 			if err != nil {

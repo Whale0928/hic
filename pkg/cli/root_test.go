@@ -33,6 +33,36 @@ func TestNewRootCommand_도메인서브커맨드를노출한다(t *testing.T) {
 	}
 }
 
+func TestNewRootCommand_루트Help명령설명은한글이다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{
+		"completion  지정한 셸의 자동완성 스크립트를 생성합니다",
+		"discovery   모집공고 후보를 발견합니다",
+		"extract     첨부 원본에서 기계 추출 artifact를 생성합니다",
+		"help        명령 도움말을 표시합니다",
+		"llm         낮은 신뢰도의 artifact를 LLM 보조로 보정합니다",
+		"migrate     PostgreSQL 스키마 마이그레이션을 실행합니다",
+		"normalize   추출 artifact를 도메인 레코드로 정규화합니다",
+		"qa          품질 게이트와 샘플 회귀 검사를 실행합니다",
+		"serve       HIC HTTP API 서버를 시작합니다",
+		"workflow    discovery, extraction, normalization, QA를 오케스트레이션합니다",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("root help missing Korean command description %q:\n%s", want, help)
+		}
+	}
+}
+
 func TestNewRootCommand_internal프로토타입명령을노출하지않는다(t *testing.T) {
 	cmd := NewRootCommand(context.Background())
 	var out bytes.Buffer
