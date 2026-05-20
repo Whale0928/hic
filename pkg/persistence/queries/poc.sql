@@ -50,6 +50,46 @@ do update set
 	updated_at = now()
 returning id;
 
+-- name: UpsertApplicationNotice :one
+insert into application_notices (
+	notice_id,
+	agency,
+	source,
+	sply_ty,
+	recrnoti_cd,
+	recr_ty,
+	noti_no_hs_at,
+	region_prior_rspe,
+	title,
+	status,
+	supply_count,
+	posted_at,
+	source_url,
+	raw_metadata
+)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+on conflict (agency, source, sply_ty, recrnoti_cd)
+do update set
+	notice_id = coalesce(excluded.notice_id, application_notices.notice_id),
+	recr_ty = excluded.recr_ty,
+	noti_no_hs_at = excluded.noti_no_hs_at,
+	region_prior_rspe = excluded.region_prior_rspe,
+	title = excluded.title,
+	status = excluded.status,
+	supply_count = excluded.supply_count,
+	posted_at = coalesce(excluded.posted_at, application_notices.posted_at),
+	source_url = excluded.source_url,
+	raw_metadata = excluded.raw_metadata,
+	updated_at = now()
+returning id;
+
+-- name: LinkApplicationNoticeToSourceNotice :exec
+update application_notices
+set
+	notice_id = $2,
+	updated_at = now()
+where id = $1;
+
 -- name: UpsertStoredObject :one
 insert into stored_objects (
 	bucket,

@@ -91,6 +91,38 @@ create index if not exists idx_source_notices_notice_type on source_notices(noti
 create index if not exists idx_source_notices_posted_at on source_notices(posted_at desc);
 create index if not exists idx_source_notices_metadata on source_notices using gin(metadata);
 
+create table if not exists application_notices (
+	id bigserial primary key,
+	notice_id bigint references source_notices(id),
+	agency text not null,
+	source text not null,
+	sply_ty text not null,
+	recrnoti_cd text not null,
+	recr_ty text not null default '',
+	noti_no_hs_at text not null default '',
+	region_prior_rspe text not null default '',
+	title text not null,
+	status text not null,
+	supply_count integer,
+	posted_at date,
+	source_url text not null default '',
+	raw_metadata jsonb not null default '{}'::jsonb,
+	created_at timestamptz not null default now(),
+	updated_at timestamptz not null default now(),
+	unique (agency, source, sply_ty, recrnoti_cd)
+);
+
+alter table if exists application_notices add column if not exists notice_id bigint references source_notices(id);
+alter table if exists application_notices add column if not exists recr_ty text not null default '';
+alter table if exists application_notices add column if not exists noti_no_hs_at text not null default '';
+alter table if exists application_notices add column if not exists region_prior_rspe text not null default '';
+alter table if exists application_notices add column if not exists source_url text not null default '';
+
+create index if not exists idx_application_notices_notice_id on application_notices(notice_id);
+create index if not exists idx_application_notices_status on application_notices(agency, status);
+create index if not exists idx_application_notices_posted_at on application_notices(posted_at desc);
+create index if not exists idx_application_notices_metadata on application_notices using gin(raw_metadata);
+
 create table if not exists attachments (
 	id bigserial primary key,
 	notice_id bigint references source_notices(id),

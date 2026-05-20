@@ -32,6 +32,23 @@ type PersistedAttachment struct {
 	Kind           extraction.AttachmentKind
 }
 
+type ApplicationNoticeInput struct {
+	NoticeID          int64
+	Agency            string
+	Source            string
+	SupplyType        string
+	RecruitNoticeCode string
+	RecruitType       string
+	NoticeNoHouse     string
+	RegionPriority    string
+	Title             string
+	Status            string
+	SupplyCount       *int
+	PostedAt          time.Time
+	SourceURL         string
+	RawMetadata       map[string]any
+}
+
 type OfferingView struct {
 	ID                   int64    `json:"id"`
 	Agency               string   `json:"agency"`
@@ -122,6 +139,74 @@ func (r *Repository) FinishCollectionRun(ctx context.Context, runID int64, statu
 		Stats:     mustJSONAny(stats),
 		ErrorText: stringValue(errorText),
 	})
+}
+
+func (r *Repository) UpsertApplicationNotice(ctx context.Context, input ApplicationNoticeInput) (int64, error) {
+	var id int64
+	noticeID := pgtype.Int8{}
+	if input.NoticeID > 0 {
+		noticeID = int8Value(input.NoticeID)
+	}
+	err := r.pool.QueryRow(ctx, `
+insert into application_notices (
+	notice_id,
+	agency,
+	source,
+	sply_ty,
+	recrnoti_cd,
+	recr_ty,
+	noti_no_hs_at,
+	region_prior_rspe,
+	title,
+	status,
+	supply_count,
+	posted_at,
+	source_url,
+	raw_metadata
+)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+on conflict (agency, source, sply_ty, recrnoti_cd)
+do update set
+	notice_id = coalesce(excluded.notice_id, application_notices.notice_id),
+	recr_ty = excluded.recr_ty,
+	noti_no_hs_at = excluded.noti_no_hs_at,
+	region_prior_rspe = excluded.region_prior_rspe,
+	title = excluded.title,
+	status = excluded.status,
+	supply_count = excluded.supply_count,
+	posted_at = coalesce(excluded.posted_at, application_notices.posted_at),
+	source_url = excluded.source_url,
+	raw_metadata = excluded.raw_metadata,
+	updated_at = now()
+returning id
+`,
+		noticeID,
+		firstNonEmpty(input.Agency, "SH"),
+		firstNonEmpty(input.Source, "sh_app_user"),
+		input.SupplyType,
+		input.RecruitNoticeCode,
+		input.RecruitType,
+		input.NoticeNoHouse,
+		input.RegionPriority,
+		input.Title,
+		input.Status,
+		int4PtrValue(input.SupplyCount),
+		dateValue(input.PostedAt),
+		input.SourceURL,
+		mustJSONAny(input.RawMetadata),
+	).Scan(&id)
+	return id, err
+}
+
+func (r *Repository) LinkApplicationNoticeToSourceNotice(ctx context.Context, applicationNoticeID int64, noticeID int64) error {
+	_, err := r.pool.Exec(ctx, `
+update application_notices
+set
+	notice_id = $2,
+	updated_at = now()
+where id = $1
+`, applicationNoticeID, noticeID)
+	return err
 }
 
 func ValidatePersistableCandidate(candidate discovery.Candidate) error {
