@@ -74,6 +74,55 @@ func TestMyHomeClient_ListNotices_공공임대응답을파싱한다(t *testing.T
 	}
 }
 
+func TestMyHomeClient_ListNotices_공공분양납부금액을파싱한다(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ltRsdtRcritNtcList" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"response": {
+				"header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE"},
+				"body": {
+					"totalCount": "1",
+					"item": {
+						"pblancId": "1411",
+						"houseSn": 1,
+						"pblancNm": "[정정공고]인천계양 A9블록 신혼희망타운(공공분양) 입주자모집공고",
+						"suplyInsttNm": "LH",
+						"houseTyNm": "아파트",
+						"hsmpNm": "인천계양 A9블록",
+						"sumSuplyCo": 317,
+						"enty": 46654000,
+						"prtpay": 93308000,
+						"surlus": 271578000,
+						"beginDe": "20260518",
+						"endDe": "20260528"
+					}
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := MyHomeClient{BaseURL: server.URL, ServiceKey: "test-key", HTTPClient: server.Client()}
+	page, err := client.ListNotices(context.Background(), MyHomeSale, 1, 1)
+	if err != nil {
+		t.Fatalf("ListNotices() error = %v", err)
+	}
+
+	item := page.Items[0]
+	if item.ContractPaymentKRW == nil || *item.ContractPaymentKRW != 46654000 {
+		t.Fatalf("ContractPaymentKRW = %v", item.ContractPaymentKRW)
+	}
+	if item.InterimPaymentKRW == nil || *item.InterimPaymentKRW != 93308000 {
+		t.Fatalf("InterimPaymentKRW = %v", item.InterimPaymentKRW)
+	}
+	if item.BalancePaymentKRW == nil || *item.BalancePaymentKRW != 271578000 {
+		t.Fatalf("BalancePaymentKRW = %v", item.BalancePaymentKRW)
+	}
+}
+
 func TestMyHomeClient_ListNotices_요청에러에서서비스키를마스킹한다(t *testing.T) {
 	client := MyHomeClient{
 		BaseURL:    "https://example.test",

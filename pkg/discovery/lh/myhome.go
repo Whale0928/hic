@@ -32,33 +32,36 @@ type MyHomePage struct {
 }
 
 type MyHomeNoticeItem struct {
-	NoticeID       string
-	HouseSN        int
-	Status         string
-	Title          string
-	Agency         string
-	HouseType      string
-	SupplyType     string
-	PostedDate     string
-	WinnerDate     string
-	SupplyCount    *int
-	Reference      string
-	SourceURL      string
-	DetailURL      string
-	MobileURL      string
-	ComplexName    string
-	Province       string
-	City           string
-	Address        string
-	LegalDong      string
-	PNU            string
-	HeatingMethod  string
-	TotalHousehold string
-	DepositKRW     *int64
-	MonthlyRent    *int64
-	ApplicationBeg string
-	ApplicationEnd string
-	Raw            map[string]any
+	NoticeID           string
+	HouseSN            int
+	Status             string
+	Title              string
+	Agency             string
+	HouseType          string
+	SupplyType         string
+	PostedDate         string
+	WinnerDate         string
+	SupplyCount        *int
+	Reference          string
+	SourceURL          string
+	DetailURL          string
+	MobileURL          string
+	ComplexName        string
+	Province           string
+	City               string
+	Address            string
+	LegalDong          string
+	PNU                string
+	HeatingMethod      string
+	TotalHousehold     string
+	DepositKRW         *int64
+	MonthlyRent        *int64
+	ContractPaymentKRW *int64
+	InterimPaymentKRW  *int64
+	BalancePaymentKRW  *int64
+	ApplicationBeg     string
+	ApplicationEnd     string
+	Raw                map[string]any
 }
 
 func (i MyHomeNoticeItem) SourceSeq() string {
@@ -214,33 +217,36 @@ func parseMyHomeItems(raw json.RawMessage) ([]MyHomeNoticeItem, error) {
 	items := make([]MyHomeNoticeItem, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, MyHomeNoticeItem{
-			NoticeID:       stringFromAny(row["pblancId"]),
-			HouseSN:        intFromAny(row["houseSn"]),
-			Status:         stringFromAny(row["sttusNm"]),
-			Title:          stringFromAny(row["pblancNm"]),
-			Agency:         stringFromAny(row["suplyInsttNm"]),
-			HouseType:      stringFromAny(row["houseTyNm"]),
-			SupplyType:     stringFromAny(row["suplyTyNm"]),
-			PostedDate:     stringFromAny(row["rcritPblancDe"]),
-			WinnerDate:     stringFromAny(row["przwnerPresnatnDe"]),
-			SupplyCount:    intPtrFromAny(row["sumSuplyCo"]),
-			Reference:      stringFromAny(row["refrnc"]),
-			SourceURL:      stringFromAny(row["url"]),
-			DetailURL:      stringFromAny(row["pcUrl"]),
-			MobileURL:      stringFromAny(row["mobileUrl"]),
-			ComplexName:    stringFromAny(row["hsmpNm"]),
-			Province:       stringFromAny(row["brtcNm"]),
-			City:           stringFromAny(row["signguNm"]),
-			Address:        stringFromAny(row["fullAdres"]),
-			LegalDong:      stringFromAny(row["refrnLegaldongNm"]),
-			PNU:            stringFromAny(row["pnu"]),
-			HeatingMethod:  stringFromAny(row["heatMthdNm"]),
-			TotalHousehold: stringFromAny(row["totHshldCo"]),
-			DepositKRW:     int64PtrFromAny(row["rentGtn"]),
-			MonthlyRent:    int64PtrFromAny(row["mtRntchrg"]),
-			ApplicationBeg: stringFromAny(row["beginDe"]),
-			ApplicationEnd: stringFromAny(row["endDe"]),
-			Raw:            row,
+			NoticeID:           stringFromAny(row["pblancId"]),
+			HouseSN:            intFromAny(row["houseSn"]),
+			Status:             stringFromAny(row["sttusNm"]),
+			Title:              stringFromAny(row["pblancNm"]),
+			Agency:             stringFromAny(row["suplyInsttNm"]),
+			HouseType:          stringFromAny(row["houseTyNm"]),
+			SupplyType:         stringFromAny(row["suplyTyNm"]),
+			PostedDate:         stringFromAny(row["rcritPblancDe"]),
+			WinnerDate:         stringFromAny(row["przwnerPresnatnDe"]),
+			SupplyCount:        intPtrFromAny(row["sumSuplyCo"]),
+			Reference:          stringFromAny(row["refrnc"]),
+			SourceURL:          stringFromAny(row["url"]),
+			DetailURL:          stringFromAny(row["pcUrl"]),
+			MobileURL:          stringFromAny(row["mobileUrl"]),
+			ComplexName:        stringFromAny(row["hsmpNm"]),
+			Province:           stringFromAny(row["brtcNm"]),
+			City:               stringFromAny(row["signguNm"]),
+			Address:            stringFromAny(row["fullAdres"]),
+			LegalDong:          stringFromAny(row["refrnLegaldongNm"]),
+			PNU:                stringFromAny(row["pnu"]),
+			HeatingMethod:      stringFromAny(row["heatMthdNm"]),
+			TotalHousehold:     stringFromAny(row["totHshldCo"]),
+			DepositKRW:         int64PtrFromAny(row["rentGtn"]),
+			MonthlyRent:        int64PtrFromAny(row["mtRntchrg"]),
+			ContractPaymentKRW: int64PtrFromAny(row["enty"]),
+			InterimPaymentKRW:  int64PtrFromAny(row["prtpay"]),
+			BalancePaymentKRW:  int64PtrFromAny(row["surlus"]),
+			ApplicationBeg:     stringFromAny(row["beginDe"]),
+			ApplicationEnd:     stringFromAny(row["endDe"]),
+			Raw:                row,
 		})
 	}
 	return items, nil

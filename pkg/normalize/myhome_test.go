@@ -60,3 +60,59 @@ func TestOfferingFromMyHomeItem_신청단위와일정을정규화한다(t *testi
 		t.Fatalf("schedule times = %+v", schedule)
 	}
 }
+
+func TestOfferingFromMyHomeItem_공공분양납부금액을QA가능필드로정규화한다(t *testing.T) {
+	count := 317
+	contract := int64(46654000)
+	interim := int64(93308000)
+	balance := int64(271578000)
+	item := lhdiscovery.MyHomeNoticeItem{
+		NoticeID:           "1411",
+		HouseSN:            1,
+		Title:              "[정정공고]인천계양 A9블록 신혼희망타운(공공분양) 입주자모집공고",
+		Agency:             "LH",
+		HouseType:          "아파트",
+		ComplexName:        "인천계양 A9블록",
+		SupplyCount:        &count,
+		ContractPaymentKRW: &contract,
+		InterimPaymentKRW:  &interim,
+		BalancePaymentKRW:  &balance,
+	}
+
+	offering := OfferingFromMyHomeItem(item, "myhome://ltRsdtRcritNtcList/1411/1")
+
+	if offering.ContractDepositKRW == nil || *offering.ContractDepositKRW != 46654000 {
+		t.Fatalf("ContractDepositKRW = %v", offering.ContractDepositKRW)
+	}
+	wantBalance := int64(364886000)
+	if offering.BalancePaymentKRW == nil || *offering.BalancePaymentKRW != wantBalance {
+		t.Fatalf("BalancePaymentKRW = %v, want %d", offering.BalancePaymentKRW, wantBalance)
+	}
+	if offering.RawRow["interim_payment_krw"] != interim {
+		t.Fatalf("RawRow = %+v", offering.RawRow)
+	}
+}
+
+func TestOfferingFromMyHomeItem_공급호수없는MyHome행은HouseSN을목록번호로보존한다(t *testing.T) {
+	zeroCount := 0
+	item := lhdiscovery.MyHomeNoticeItem{
+		NoticeID:    "1341",
+		HouseSN:     11,
+		Agency:      "LH",
+		HouseType:   "다가구주택",
+		ComplexName: "우아연립",
+		SupplyCount: &zeroCount,
+	}
+
+	offering := OfferingFromMyHomeItem(item, "myhome://ltRsdtRcritNtcList/1341/11")
+
+	if offering.ListNo != "11" {
+		t.Fatalf("ListNo = %q, want 11", offering.ListNo)
+	}
+	if offering.ApplicationUnitLabel != "우아연립 다가구주택" {
+		t.Fatalf("ApplicationUnitLabel = %q", offering.ApplicationUnitLabel)
+	}
+	if offering.SupplyCount == nil || *offering.SupplyCount != 0 {
+		t.Fatalf("SupplyCount = %v, want preserved zero", offering.SupplyCount)
+	}
+}

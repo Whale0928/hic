@@ -347,6 +347,11 @@ with evaluated as (
 					supply_count is not null
 					and supply_count > 0
 				)
+				or (
+					source = 'myhome'
+					and trim(list_no) <> ''
+					and trim(application_unit_label) <> ''
+				)
 			)
 			and (
 				(
@@ -370,6 +375,11 @@ with evaluated as (
 					and supply_count is not null
 					and supply_count > 0
 				)
+				or (
+					source = 'myhome'
+					and trim(list_no) <> ''
+					and trim(application_unit_label) <> ''
+				)
 			)
 			and (
 				(
@@ -385,6 +395,13 @@ with evaluated as (
 				or (
 					dormitory_fee_krw is not null
 					and dormitory_fee_krw >= 0
+				)
+				or (
+					source = 'myhome'
+					and contract_deposit_krw is not null
+					and contract_deposit_krw >= 0
+					and balance_payment_krw is not null
+					and balance_payment_krw >= 0
 				)
 			)
 		) as passes

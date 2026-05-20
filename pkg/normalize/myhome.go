@@ -28,9 +28,21 @@ func OfferingFromMyHomeItem(item lhdiscovery.MyHomeNoticeItem, sourceSpan string
 	if item.SupplyCount != nil && *item.SupplyCount > 0 {
 		labelParts = append(labelParts, fmt.Sprintf("%d호", *item.SupplyCount))
 	}
+	balancePayment := sumInt64Ptrs(item.InterimPaymentKRW, item.BalancePaymentKRW)
+	rawRow := map[string]any{
+		"source":     "myhome_api",
+		"pblanc_id":  item.NoticeID,
+		"house_sn":   item.HouseSN,
+		"detail_url": item.DetailURL,
+		"source_url": item.SourceURL,
+	}
+	if item.InterimPaymentKRW != nil {
+		rawRow["interim_payment_krw"] = *item.InterimPaymentKRW
+	}
 	return OfferingCandidate{
 		ApplicationUnitLabel: joinApplicationLabel(labelParts...),
 		SupplyCategory:       item.SupplyType,
+		ListNo:               myHomeHouseSNLabel(item.HouseSN),
 		District:             strings.TrimSpace(strings.Join(nonEmptyStrings(item.Province, item.City), " ")),
 		Address:              item.Address,
 		LegalDong:            item.LegalDong,
@@ -38,18 +50,14 @@ func OfferingFromMyHomeItem(item lhdiscovery.MyHomeNoticeItem, sourceSpan string
 		ComplexName:          item.ComplexName,
 		UnitType:             item.HouseType,
 		DepositKRW:           cloneInt64Ptr(item.DepositKRW),
+		ContractDepositKRW:   cloneInt64Ptr(item.ContractPaymentKRW),
+		BalancePaymentKRW:    balancePayment,
 		MonthlyRentKRW:       cloneInt64Ptr(item.MonthlyRent),
 		SupplyCount:          cloneIntPtr(item.SupplyCount),
 		HeatingMethod:        item.HeatingMethod,
 		SourceSpan:           sourceSpan,
-		RawRow: map[string]any{
-			"source":     "myhome_api",
-			"pblanc_id":  item.NoticeID,
-			"house_sn":   item.HouseSN,
-			"detail_url": item.DetailURL,
-			"source_url": item.SourceURL,
-		},
-		Confidence: 0.95,
+		RawRow:               rawRow,
+		Confidence:           0.95,
 	}
 }
 
@@ -103,6 +111,13 @@ func joinApplicationLabel(values ...string) string {
 	return strings.Join(nonEmptyStrings(values...), " ")
 }
 
+func myHomeHouseSNLabel(houseSN int) string {
+	if houseSN <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", houseSN)
+}
+
 func cloneIntPtr(value *int) *int {
 	if value == nil {
 		return nil
@@ -117,4 +132,20 @@ func cloneInt64Ptr(value *int64) *int64 {
 	}
 	out := *value
 	return &out
+}
+
+func sumInt64Ptrs(values ...*int64) *int64 {
+	var sum int64
+	hasValue := false
+	for _, value := range values {
+		if value == nil {
+			continue
+		}
+		sum += *value
+		hasValue = true
+	}
+	if !hasValue {
+		return nil
+	}
+	return &sum
 }
