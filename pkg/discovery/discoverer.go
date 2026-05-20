@@ -9,10 +9,11 @@ import (
 )
 
 type Options struct {
-	Pages      int
-	Seqs       []string
-	CutoffDate time.Time
-	KnownSeqs  map[string]bool
+	Pages        int
+	Seqs         []string
+	CutoffDate   time.Time
+	KnownSeqs    map[string]bool
+	TargetTitles []string
 }
 
 type Candidate struct {
@@ -74,6 +75,7 @@ func (d Discoverer) Discover(ctx context.Context, board Board, opts Options) (Re
 		opts.Pages = 1
 	}
 	report := Report{Agency: board.Agency, BoardKind: board.BoardKind}
+	pendingTargets := targetTitleSet(opts.TargetTitles)
 	if len(opts.Seqs) > 0 && opts.Pages > 1 {
 		return d.discoverSelectedRows(ctx, board, opts, report)
 	}
@@ -108,26 +110,65 @@ func (d Discoverer) Discover(ctx context.Context, board Board, opts Options) (Re
 
 		seenOldRow := false
 		for _, row := range rows {
-			if isOlderThanCutoff(row.PostedAt, opts.CutoffDate) {
+			targetKey, isTarget := matchedTargetTitleKey(row.Title, pendingTargets)
+			if isOlderThanCutoff(row.PostedAt, opts.CutoffDate) && !isTarget {
 				report.SkippedOld++
 				seenOldRow = true
 				continue
 			}
 			if opts.KnownSeqs[row.Seq] {
 				report.SkippedKnown++
+				delete(pendingTargets, targetKey)
 				continue
 			}
 			if err := d.discoverDetail(ctx, board, row, &report); err != nil {
 				return report, err
 			}
+			delete(pendingTargets, targetKey)
 		}
-		if seenOldRow {
+		if seenOldRow && len(pendingTargets) == 0 {
 			report.StoppedByCutoff = true
 			return report, nil
 		}
 	}
 
 	return report, nil
+}
+
+func matchedTargetTitleKey(title string, targets map[string]bool) (string, bool) {
+	rowKey := targetTitleKey(title)
+	for target := range targets {
+		if rowKey == target || strings.Contains(rowKey, target) || strings.Contains(target, rowKey) {
+			return target, true
+		}
+	}
+	return rowKey, false
+}
+
+func targetTitleSet(titles []string) map[string]bool {
+	targets := make(map[string]bool, len(titles))
+	for _, title := range titles {
+		key := targetTitleKey(title)
+		if key != "" {
+			targets[key] = true
+		}
+	}
+	return targets
+}
+
+func targetTitleKey(title string) string {
+	title = strings.ToLower(strings.TrimSpace(title))
+	replacer := strings.NewReplacer(
+		"모집 공고", "모집공고",
+		"입주자 모집", "입주자모집",
+		"2026.04.29", "20260429",
+		"2026.4.29", "20260429",
+		" ", "",
+		".", "",
+		"(", "",
+		")", "",
+	)
+	return replacer.Replace(title)
 }
 
 func isOlderThanCutoff(postedAt time.Time, cutoff time.Time) bool {
