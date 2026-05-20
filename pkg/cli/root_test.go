@@ -87,6 +87,7 @@ func TestNewRootCommand_도메인서브커맨드Help가동작한다(t *testing.T
 	tests := [][]string{
 		{"discovery", "--help"},
 		{"discovery", "sh", "--help"},
+		{"discovery", "sh-applications", "--help"},
 		{"serve", "--help"},
 		{"extract", "--help"},
 		{"normalize", "--help"},
@@ -113,6 +114,44 @@ func TestNewRootCommand_도메인서브커맨드Help가동작한다(t *testing.T
 				t.Fatalf("Execute(%v) produced empty help", args)
 			}
 		})
+	}
+}
+
+func TestNewRootCommand_SHApplicationsHelp를노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"discovery", "sh-applications", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{"--sply-ty", "--all-active", "--show-items"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("sh-applications help missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestNewRootCommand_CollectSHHelp가ActiveApplication옵션을노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"workflow", "collect-sh", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{"--active-applications", "--active-sply-ty", "--active-max-pages"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("collect-sh help missing %q:\n%s", want, help)
+		}
 	}
 }
 

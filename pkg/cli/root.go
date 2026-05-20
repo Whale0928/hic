@@ -10,6 +10,7 @@ import (
 
 	"hic/pkg/api"
 	"hic/pkg/discovery"
+	shdiscovery "hic/pkg/discovery/sh"
 	"hic/pkg/extraction"
 	"hic/pkg/global"
 	"hic/pkg/normalize"
@@ -122,7 +123,51 @@ func newDiscoveryCommand(ctx context.Context, cfg global.Config) *cobra.Command 
 	shCmd.Flags().IntVar(&maxAgeDays, "max-age-days", 30, "지정 일수보다 오래된 공고는 제외합니다. 0이면 비활성화합니다")
 	shCmd.Flags().BoolVar(&skipExisting, "skip-existing", false, "PostgreSQL을 조회해 이미 수집한 모집공고를 건너뜁니다")
 	cmd.AddCommand(shCmd)
+	cmd.AddCommand(newDiscoverySHApplicationsCommand(ctx))
 
+	return cmd
+}
+
+func newDiscoverySHApplicationsCommand(ctx context.Context) *cobra.Command {
+	var splyTy string
+	var allActive bool
+	var dryRun bool
+	var showItems bool
+
+	cmd := &cobra.Command{
+		Use:   "sh-applications",
+		Short: "SH 인터넷청약 상태 공고를 발견합니다",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !dryRun {
+				return fmt.Errorf("SH application discovery persistence is handled by workflow collect-sh; use --dry-run")
+			}
+			endpoints, err := shdiscovery.DefaultApplicationEndpoints().Select(splitCSV(splyTy))
+			if err != nil {
+				return err
+			}
+			client := shdiscovery.NewHTTPClient()
+			applications := make([]shdiscovery.ApplicationNotice, 0)
+			for _, endpoint := range endpoints {
+				rows, err := client.ListApplications(ctx, endpoint)
+				if err != nil {
+					return err
+				}
+				applications = append(applications, rows...)
+			}
+			if allActive {
+				applications = filterActiveApplications(applications)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "agency=SH source=sh_app_user endpoints=%d applications=%d dry_run=%t\n", len(endpoints), len(applications), dryRun)
+			if showItems {
+				writeSHApplications(cmd.OutOrStdout(), applications)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&splyTy, "sply-ty", "", "쉼표로 구분한 SH 공급유형 코드. 비우면 기본 인터넷청약 전체를 조회합니다")
+	cmd.Flags().BoolVar(&allActive, "all-active", false, "청약중/접수예정 상태만 출력합니다")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "DB 저장 없이 SH 인터넷청약 상태만 보고합니다")
+	cmd.Flags().BoolVar(&showItems, "show-items", false, "발견한 SH 인터넷청약 상태 행을 출력합니다")
 	return cmd
 }
 
@@ -245,6 +290,84 @@ func writeDiscoveryReport(w io.Writer, report discovery.Report, showAttachments 
 	}
 }
 
+func writeSHApplications(w io.Writer, applications []shdiscovery.ApplicationNotice) {
+	for _, application := range applications {
+		fmt.Fprintf(
+			w,
+			"application recrnoti_cd=%s sply_ty=%s recr_ty=%s status=%s supply_count=%s posted_at=%s title=%q\n",
+			application.RecruitNoticeCode,
+			application.SupplyType,
+			application.RecruitType,
+			application.Status,
+			intPtrString(application.SupplyCount),
+			dateString(application.PostedAt),
+			application.Title,
+		)
+	}
+}
+
+func filterActiveApplications(applications []shdiscovery.ApplicationNotice) []shdiscovery.ApplicationNotice {
+	filtered := make([]shdiscovery.ApplicationNotice, 0, len(applications))
+	for _, application := range applications {
+		if application.Status == shdiscovery.StatusOpen || application.Status == shdiscovery.StatusPending {
+			filtered = append(filtered, application)
+		}
+	}
+	return filtered
+}
+
+func collectSHApplicationNotices(ctx context.Context, supplyTypes []string) ([]shdiscovery.ApplicationNotice, error) {
+	endpoints, err := shdiscovery.DefaultApplicationEndpoints().Select(supplyTypes)
+	if err != nil {
+		return nil, err
+	}
+	client := shdiscovery.NewHTTPClient()
+	applications := make([]shdiscovery.ApplicationNotice, 0)
+	for _, endpoint := range endpoints {
+		rows, err := client.ListApplications(ctx, endpoint)
+		if err != nil {
+			return nil, err
+		}
+		applications = append(applications, rows...)
+	}
+	return filterActiveApplications(applications), nil
+}
+
+func writeSHApplicationLinks(w io.Writer, result shdiscovery.ReconcileResult) {
+	for _, link := range result.Linked {
+		fmt.Fprintf(w, "active_application recrnoti_cd=%s sply_ty=%s status=%s board_seq=%s title=%q\n", link.RecruitNoticeCode, link.SupplyType, link.Status, link.BoardSeq, link.Title)
+	}
+	for _, application := range result.UnmatchedApplications {
+		fmt.Fprintf(w, "unmatched_application recrnoti_cd=%s sply_ty=%s status=%s title=%q\n", application.RecruitNoticeCode, application.SupplyType, application.Status, application.Title)
+	}
+}
+
+func applicationNoticeInput(application shdiscovery.ApplicationNotice) persistence.ApplicationNoticeInput {
+	return persistence.ApplicationNoticeInput{
+		Agency:            "SH",
+		Source:            "sh_app_user",
+		SupplyType:        application.SupplyType,
+		RecruitNoticeCode: application.RecruitNoticeCode,
+		RecruitType:       application.RecruitType,
+		NoticeNoHouse:     application.NoticeNoHouse,
+		RegionPriority:    application.RegionPriority,
+		Title:             application.Title,
+		Status:            string(application.Status),
+		SupplyCount:       application.SupplyCount,
+		PostedAt:          application.PostedAt,
+		RawMetadata: map[string]any{
+			"raw_status": application.RawStatus,
+		},
+	}
+}
+
+func dateString(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.Format(time.DateOnly)
+}
+
 func firstNonEmptyString(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -350,6 +473,9 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 	var seqs string
 	var maxAgeDays int
 	var skipExisting bool
+	var activeApplications bool
+	var activeSplyTy string
+	var activeMaxPages int
 
 	cmd := &cobra.Command{
 		Use:   "collect-sh",
@@ -374,6 +500,8 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			var downloaded int
 			var insertedArtifacts int
 			var upsertedOfferings int
+			var upsertedApplications int
+			var linkedApplications int
 			var storedObjects int64
 			var totalArtifacts int64
 			var totalOfferings int64
@@ -389,7 +517,10 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 						status = persistence.CollectionRunStatusFailed
 						errorText = err.Error()
 					}
-					finishErr := repo.FinishCollectionRun(cmd.Context(), runID, status, collectionRunStats(report, downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings), errorText)
+					stats := collectionRunStats(report, downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings)
+					stats["upserted_application_notices"] = upsertedApplications
+					stats["linked_application_notices"] = linkedApplications
+					finishErr := repo.FinishCollectionRun(cmd.Context(), runID, status, stats, errorText)
 					if err == nil && finishErr != nil {
 						err = finishErr
 					}
@@ -403,22 +534,39 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 					return err
 				}
 			}
+			var applications []shdiscovery.ApplicationNotice
+			if activeApplications {
+				applications, err = collectSHApplicationNotices(cmd.Context(), splitCSV(activeSplyTy))
+				if err != nil {
+					return err
+				}
+				if activeMaxPages > pages {
+					pages = activeMaxPages
+				}
+			}
 			report, err = discovery.NewDiscoverer(discovery.NewHTTPFetcher()).Discover(cmd.Context(), board, discovery.Options{
-				Pages:      pages,
-				Seqs:       splitCSV(seqs),
-				CutoffDate: cutoffDate(maxAgeDays),
-				KnownSeqs:  knownSeqs,
+				Pages:        pages,
+				Seqs:         splitCSV(seqs),
+				CutoffDate:   cutoffDate(maxAgeDays),
+				KnownSeqs:    knownSeqs,
+				TargetTitles: shdiscovery.ActiveTargetTitles(applications),
 			})
 			if err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), report.String())
+			reconcileResult := shdiscovery.ReconcileApplications(applications, report.Candidates)
+			if activeApplications {
+				fmt.Fprintf(cmd.OutOrStdout(), "active_applications=%d linked=%d unmatched=%d\n", len(applications), len(reconcileResult.Linked), len(reconcileResult.UnmatchedApplications))
+				writeSHApplicationLinks(cmd.OutOrStdout(), reconcileResult)
+			}
 			if dryRun || !preserveAttachments {
 				return nil
 			}
 
 			objectStore := extraction.NewLocalObjectStore(objectRoot)
 			collector := workflow.NewCollector(workflow.NewSHAttachmentFetcher(), objectStore)
+			noticeIDBySeq := make(map[string]int64, len(report.Candidates))
 			for _, candidate := range report.Candidates {
 				preserveReport, err := collector.PreserveCandidateAttachments(cmd.Context(), board, candidate)
 				if err != nil {
@@ -428,6 +576,9 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 				persisted, err := repo.SaveCandidatePreservation(cmd.Context(), board, candidate, preserveReport)
 				if err != nil {
 					return err
+				}
+				if len(persisted) > 0 {
+					noticeIDBySeq[candidate.Seq] = persisted[0].NoticeID
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), preserveReport.String())
 				for _, object := range preserveReport.Objects {
@@ -456,6 +607,26 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 					}
 				}
 			}
+			applicationIDByCode := make(map[string]int64, len(applications))
+			for _, application := range applications {
+				applicationID, err := repo.UpsertApplicationNotice(cmd.Context(), applicationNoticeInput(application))
+				if err != nil {
+					return err
+				}
+				applicationIDByCode[application.RecruitNoticeCode] = applicationID
+				upsertedApplications++
+			}
+			for _, link := range reconcileResult.Linked {
+				noticeID := noticeIDBySeq[link.BoardSeq]
+				applicationID := applicationIDByCode[link.RecruitNoticeCode]
+				if noticeID == 0 || applicationID == 0 {
+					continue
+				}
+				if err := repo.LinkApplicationNoticeToSourceNotice(cmd.Context(), applicationID, noticeID); err != nil {
+					return err
+				}
+				linkedApplications++
+			}
 			storedObjects, totalArtifacts, err = repo.Counts(cmd.Context())
 			if err != nil {
 				return err
@@ -469,6 +640,9 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 				return err
 			}
 			fmt.Fprint(cmd.OutOrStdout(), formatCollectionSummary(downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings, qaSummary))
+			if activeApplications {
+				fmt.Fprintf(cmd.OutOrStdout(), "application_notices upserted=%d linked=%d\n", upsertedApplications, linkedApplications)
+			}
 			return nil
 		},
 	}
@@ -480,6 +654,9 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 	cmd.Flags().StringVar(&objectRoot, "object-root", ".data/objects", "로컬 ObjectStore 루트 디렉터리")
 	cmd.Flags().IntVar(&maxAgeDays, "max-age-days", 30, "지정 일수보다 오래된 공고는 제외합니다. 0이면 비활성화합니다")
 	cmd.Flags().BoolVar(&skipExisting, "skip-existing", true, "--seq가 없을 때 이미 수집한 모집공고를 건너뜁니다")
+	cmd.Flags().BoolVar(&activeApplications, "active-applications", false, "SH 인터넷청약 청약중/접수예정 공고를 먼저 수집해 게시판 탐색 목표로 사용합니다")
+	cmd.Flags().StringVar(&activeSplyTy, "active-sply-ty", "", "쉼표로 구분한 SH 인터넷청약 공급유형 코드. 비우면 기본 전체를 조회합니다")
+	cmd.Flags().IntVar(&activeMaxPages, "active-max-pages", 10, "인터넷청약 활성 공고 reconcile을 위해 탐색할 최대 게시판 페이지 수")
 	return cmd
 }
 
