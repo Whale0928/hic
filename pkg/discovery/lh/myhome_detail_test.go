@@ -30,6 +30,29 @@ func TestParseMyHomeNoticeDetailHTML_전세임대조건을구조화한다(t *tes
 	}
 }
 
+func TestParseMyHomeNoticeDetailHTML_공고문다운로드파일을구조화한다(t *testing.T) {
+	html := `
+<table>
+  <tr><th>공고문</th><td><a href="javascript:fnDownFile('19e0126454979', '1')" >집주인임대주택_예비입주자_모집공고문_서울지역본부.pdf</a></td></tr>
+</table>`
+
+	detail, err := ParseMyHomeNoticeDetailHTML(html)
+	if err != nil {
+		t.Fatalf("ParseMyHomeNoticeDetailHTML() error = %v", err)
+	}
+
+	if len(detail.NoticeFiles) != 1 {
+		t.Fatalf("NoticeFiles len = %d, want 1", len(detail.NoticeFiles))
+	}
+	file := detail.NoticeFiles[0]
+	if file.AtchFileID != "19e0126454979" || file.FileSN != "1" {
+		t.Fatalf("file ids = %+v", file)
+	}
+	if file.Filename != "집주인임대주택_예비입주자_모집공고문_서울지역본부.pdf" {
+		t.Fatalf("Filename = %q", file.Filename)
+	}
+}
+
 func TestParseMyHomeNoticeDetailHTML_공고문참조만있는임대조건은금액근거로쓰지않는다(t *testing.T) {
 	html := `
 <table>

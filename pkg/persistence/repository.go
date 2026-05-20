@@ -11,6 +11,7 @@ import (
 	"hic/pkg/discovery"
 	lhdiscovery "hic/pkg/discovery/lh"
 	"hic/pkg/extraction"
+	"hic/pkg/global"
 	"hic/pkg/llm"
 	"hic/pkg/normalize"
 	"hic/pkg/persistence/db"
@@ -506,6 +507,56 @@ func (r *Repository) InsertArtifact(ctx context.Context, attachmentID int64, sto
 		Confidence:     numericValue(artifact.Confidence),
 		ErrorText:      artifact.ErrorText,
 	})
+}
+
+func (r *Repository) SaveMyHomeNoticeFile(ctx context.Context, noticeID int64, endpoint lhdiscovery.MyHomeEndpoint, item lhdiscovery.MyHomeNoticeItem, file lhdiscovery.MyHomeNoticeFile, stored global.StoredObject) (PersistedAttachment, error) {
+	storedID, err := r.queries.UpsertStoredObject(ctx, db.UpsertStoredObjectParams{
+		Bucket:           "hic-originals",
+		ObjectKey:        stored.Key,
+		StorageBackend:   "local_filesystem",
+		ContentType:      stored.ContentType,
+		OriginalFilename: stored.OriginalName,
+		Sha256:           stored.SHA256,
+		SizeBytes:        stored.SizeBytes,
+		Metadata:         mustJSON(stored.Metadata),
+	})
+	if err != nil {
+		return PersistedAttachment{}, err
+	}
+	kind := extraction.ClassifyAttachment(file.Filename)
+	attachmentID, err := r.queries.UpsertAttachment(ctx, db.UpsertAttachmentParams{
+		NoticeID:         int8Value(noticeID),
+		StoredObjectID:   int8Value(storedID),
+		BrdID:            "myhome:" + string(endpoint),
+		Seq:              item.SourceSeq(),
+		FileSeq:          file.FileSN,
+		OriginalFilename: file.Filename,
+		FileExt:          strings.TrimPrefix(strings.ToLower(filepath.Ext(file.Filename)), "."),
+		FileSize:         stored.SizeBytes,
+		ContentType:      stored.ContentType,
+		ObjectKey:        stored.Key,
+		Sha256:           stored.SHA256,
+		AttachmentKind:   string(kind),
+		ExtractorStatus:  "preserved",
+		RawMetadata: mustJSON(map[string]string{
+			"atch_file_id":    file.AtchFileID,
+			"file_sn":         file.FileSN,
+			"endpoint":        string(endpoint),
+			"attachment_kind": string(kind),
+		}),
+	})
+	if err != nil {
+		return PersistedAttachment{}, err
+	}
+	return PersistedAttachment{
+		NoticeID:       noticeID,
+		StoredObjectID: storedID,
+		AttachmentID:   attachmentID,
+		FileSeq:        file.FileSN,
+		Filename:       file.Filename,
+		ObjectKey:      stored.Key,
+		Kind:           kind,
+	}, nil
 }
 
 func (r *Repository) UpsertOffering(ctx context.Context, attachment PersistedAttachment, sourceArtifactID int64, offering normalize.OfferingCandidate) (int64, error) {

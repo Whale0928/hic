@@ -734,6 +734,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 	var agencyFilter string
 	var showItems bool
 	var fetchDetails bool
+	var objectRoot string
 
 	cmd := &cobra.Command{
 		Use:   "collect-lh",
@@ -791,8 +792,10 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 			}
 			upsertedArtifacts := 0
 			upsertedDetailArtifacts := 0
+			upsertedFileArtifacts := 0
 			upsertedOfferings := 0
 			upsertedSchedules := 0
+			objectStore := extraction.NewLocalObjectStore(objectRoot)
 			defer func() {
 				status := persistence.CollectionRunStatusSucceeded
 				errorText := ""
@@ -812,6 +815,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 					"agency_filter":             agencyFilter,
 					"upserted_artifacts":        upsertedArtifacts,
 					"upserted_detail_artifacts": upsertedDetailArtifacts,
+					"upserted_file_artifacts":   upsertedFileArtifacts,
 					"upserted_offerings":        upsertedOfferings,
 					"upserted_schedules":        upsertedSchedules,
 				}
@@ -842,6 +846,17 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 						}
 						offeringArtifactID = detailArtifactID
 						upsertedDetailArtifacts++
+						if shouldFetchMyHomeNoticeFileFallback(item, detail) {
+							fileArtifactID, ok, n, err := preserveAndExtractMyHomeNoticeFile(ctx, repo, objectStore, client, endpoint, noticeID, item, detail)
+							if err != nil {
+								return err
+							}
+							upsertedFileArtifacts += n
+							if ok {
+								item = applyMyHomePDFRentSummary(item, fileArtifactID.summary)
+								offeringArtifactID = fileArtifactID.artifactID
+							}
+						}
 					}
 				}
 				offering := normalize.OfferingFromMyHomeItem(item, sourceSpan)
@@ -873,7 +888,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 				storedObjects,
 				totalArtifacts,
 				totalOfferings,
-				upsertedArtifacts+upsertedDetailArtifacts,
+				upsertedArtifacts+upsertedDetailArtifacts+upsertedFileArtifacts,
 				upsertedOfferings,
 				upsertedSchedules,
 				qaSummary.Approved,
@@ -892,6 +907,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 	cmd.Flags().StringVar(&agencyFilter, "agency-filter", "", "특정 공급기관명만 저장/출력합니다. 예: LH")
 	cmd.Flags().BoolVar(&showItems, "show-items", false, "dry-run에서 MyHome 후보 목록을 상세 출력합니다")
 	cmd.Flags().BoolVar(&fetchDetails, "fetch-details", true, "금액/공급호수 보강이 필요한 MyHome 상세 HTML을 조회합니다")
+	cmd.Flags().StringVar(&objectRoot, "object-root", ".data/objects", "LH/MyHome 첨부 원본을 보존할 로컬 ObjectStore 루트")
 	return cmd
 }
 
@@ -910,6 +926,9 @@ func shouldFetchMyHomeDetail(item lhdiscovery.MyHomeNoticeItem) bool {
 	if strings.TrimSpace(item.DetailURL) == "" {
 		return false
 	}
+	if item.HouseSN > 0 && item.ContractPaymentKRW != nil && item.BalancePaymentKRW != nil {
+		return false
+	}
 	if item.SupplyCount == nil || *item.SupplyCount <= 0 {
 		return true
 	}
@@ -925,6 +944,112 @@ func shouldFetchMyHomeDetail(item lhdiscovery.MyHomeNoticeItem) bool {
 	default:
 		return false
 	}
+}
+
+type myHomeFileSummaryResult struct {
+	artifactID int64
+	summary    normalize.MyHomePDFRentSummary
+}
+
+func shouldFetchMyHomeNoticeFileFallback(item lhdiscovery.MyHomeNoticeItem, detail lhdiscovery.MyHomeNoticeDetail) bool {
+	if len(detail.NoticeFiles) == 0 {
+		return false
+	}
+	return strings.TrimSpace(item.DepositConditionText) == "" || strings.TrimSpace(item.MonthlyRentConditionText) == ""
+}
+
+func preserveAndExtractMyHomeNoticeFile(
+	ctx context.Context,
+	repo *persistence.Repository,
+	objectStore extraction.LocalObjectStore,
+	client lhdiscovery.MyHomeClient,
+	endpoint lhdiscovery.MyHomeEndpoint,
+	noticeID int64,
+	item lhdiscovery.MyHomeNoticeItem,
+	detail lhdiscovery.MyHomeNoticeDetail,
+) (myHomeFileSummaryResult, bool, int, error) {
+	for _, file := range detail.NoticeFiles {
+		if !strings.EqualFold(filepath.Ext(file.Filename), ".pdf") {
+			continue
+		}
+		doc, err := client.DownloadNoticeFile(ctx, file)
+		if err != nil {
+			return myHomeFileSummaryResult{}, false, 0, err
+		}
+		stored, err := objectStore.Put(ctx, global.Object{
+			Key:          workflow.ObjectKeyForAttachment(discovery.Candidate{Agency: "LH", Seq: item.SourceSeq()}, discovery.AttachmentMeta{Seq: item.SourceSeq(), FileSeq: file.FileSN, Filename: file.Filename}),
+			Reader:       doc.Body,
+			ContentType:  firstNonEmptyString(doc.ContentType, "application/pdf"),
+			OriginalName: file.Filename,
+			Metadata: map[string]string{
+				"agency":       "LH",
+				"source":       "myhome",
+				"endpoint":     string(endpoint),
+				"pblanc_id":    item.NoticeID,
+				"house_sn":     fmt.Sprintf("%d", item.HouseSN),
+				"atch_file_id": file.AtchFileID,
+				"file_sn":      file.FileSN,
+			},
+		})
+		closeErr := doc.Body.Close()
+		if err != nil {
+			return myHomeFileSummaryResult{}, false, 0, err
+		}
+		if closeErr != nil {
+			return myHomeFileSummaryResult{}, false, 0, fmt.Errorf("close myhome notice file: %w", closeErr)
+		}
+		attachment, err := repo.SaveMyHomeNoticeFile(ctx, noticeID, endpoint, item, file, stored)
+		if err != nil {
+			return myHomeFileSummaryResult{}, false, 0, err
+		}
+		artifacts, err := workflow.ExtractPreservedAttachment(objectStore, workflow.PreservedAttachmentRef{
+			ObjectKey: attachment.ObjectKey,
+			Kind:      attachment.Kind,
+		})
+		if err != nil {
+			return myHomeFileSummaryResult{}, false, 0, err
+		}
+		inserted := 0
+		var textArtifactID int64
+		var summary normalize.MyHomePDFRentSummary
+		hasSummary := false
+		for _, artifact := range artifacts {
+			artifactID, err := repo.InsertArtifact(ctx, attachment.AttachmentID, attachment.StoredObjectID, artifact)
+			if err != nil {
+				return myHomeFileSummaryResult{}, false, inserted, err
+			}
+			inserted++
+			if artifact.Type != extraction.ArtifactTypePDFText {
+				continue
+			}
+			if parsed, ok := normalize.MyHomePDFRentSummaryFromText(artifact.RawText); ok {
+				textArtifactID = artifactID
+				summary = parsed
+				hasSummary = true
+			}
+		}
+		if hasSummary {
+			return myHomeFileSummaryResult{artifactID: textArtifactID, summary: summary}, true, inserted, nil
+		}
+		return myHomeFileSummaryResult{}, false, inserted, nil
+	}
+	return myHomeFileSummaryResult{}, false, 0, nil
+}
+
+func applyMyHomePDFRentSummary(item lhdiscovery.MyHomeNoticeItem, summary normalize.MyHomePDFRentSummary) lhdiscovery.MyHomeNoticeItem {
+	if strings.TrimSpace(item.DepositConditionText) == "" {
+		item.DepositConditionText = summary.DepositText
+	}
+	if strings.TrimSpace(item.MonthlyRentConditionText) == "" {
+		item.MonthlyRentConditionText = summary.MonthlyRentText
+	}
+	if item.DepositKRW == nil && summary.DepositKRW != nil {
+		item.DepositKRW = summary.DepositKRW
+	}
+	if item.MonthlyRent == nil && summary.MonthlyRentKRW != nil {
+		item.MonthlyRent = summary.MonthlyRentKRW
+	}
+	return item
 }
 
 func newWorkflowCollectSHCommand() *cobra.Command {

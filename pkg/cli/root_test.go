@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hic/pkg/discovery"
+	lhdiscovery "hic/pkg/discovery/lh"
 	"hic/pkg/extraction"
 	"hic/pkg/llm"
 	"hic/pkg/normalize"
@@ -250,6 +251,24 @@ func TestNewRootCommand_LHCollectHelp가MyHome옵션을노출한다(t *testing.T
 		if !strings.Contains(help, want) {
 			t.Fatalf("collect-lh help missing %q:\n%s", want, help)
 		}
+	}
+}
+
+func TestShouldFetchMyHomeDetail_분양납부금액이있으면공급호수0이어도상세를건너뛴다(t *testing.T) {
+	contract := int64(7765500)
+	balance := int64(69889500)
+	zeroCount := 0
+	item := lhdiscovery.MyHomeNoticeItem{
+		HouseSN:            11,
+		SupplyType:         "공공분양",
+		SupplyCount:        &zeroCount,
+		ContractPaymentKRW: &contract,
+		BalancePaymentKRW:  &balance,
+		DetailURL:          "https://www.myhome.go.kr/detail",
+	}
+
+	if shouldFetchMyHomeDetail(item) {
+		t.Fatalf("shouldFetchMyHomeDetail() = true, want false for sale item with payment fields")
 	}
 }
 
