@@ -25,8 +25,14 @@ func ClassifyAttachment(filename string) AttachmentKind {
 		if containsAny(name, "일정", "스케줄") {
 			return AttachmentKindSchedulePDF
 		}
-		if containsAny(name, "공고", "모집") {
+		if containsAny(name, "공고", "모집", "공급", "팸플릿", "주택") {
 			return AttachmentKindNoticePDF
+		}
+		return AttachmentKindUnsupported
+	}
+	if ext == "hwp" || ext == "hwpx" {
+		if containsAny(name, "공고", "모집") {
+			return AttachmentKindNoticeHWP
 		}
 		return AttachmentKindUnsupported
 	}

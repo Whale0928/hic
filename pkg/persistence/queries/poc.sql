@@ -44,7 +44,7 @@ do update set
 	notice_type = excluded.notice_type,
 	notice_subtype = excluded.notice_subtype,
 	title = excluded.title,
-	posted_at = excluded.posted_at,
+	posted_at = coalesce(excluded.posted_at, source_notices.posted_at),
 	source_url = excluded.source_url,
 	body_text = excluded.body_text,
 	updated_at = now()
@@ -306,57 +306,106 @@ select count(*) from offerings
 where qa_status = $1;
 
 -- name: PromoteOfferingsQA :exec
-update offerings
-set qa_status = case
-	when exists (
+with evaluated as (
+	select
+		id,
+		notice_id,
+		attachment_id,
+		coalesce(source_row, -1) as source_row_key,
+		md5(coalesce(unit_no, '')) as unit_key,
+		md5(coalesce(nullif(housing_name, ''), complex_name, '')) as housing_key,
+		md5(coalesce(application_unit_label, '')) as label_key,
+		md5(coalesce(source_span, '')) as source_span_key,
+		(
+			exists (
 			select 1
 			from source_notices sn
 			where sn.id = offerings.notice_id
 				and sn.category = 'recruitment'
-		)
-		and notice_id is not null
-		and attachment_id is not null
-		and source_artifact_id is not null
-		and trim(source_span) <> ''
-		and (
-			trim(application_unit_label) <> ''
-			or coalesce(trim(unit_no), '') <> ''
-			or trim(coalesce(nullif(housing_name, ''), complex_name)) <> ''
-		)
-		and (
-			coalesce(trim(unit_no), '') <> ''
-			or (
-				supply_count is not null
-				and supply_count > 0
 			)
-		)
-		and (
-			(
-				exclusive_area_m2 is not null
-				and exclusive_area_m2 > 0
+			and notice_id is not null
+			and (attachment_id is not null or source = 'myhome')
+			and source_artifact_id is not null
+			and trim(source_span) <> ''
+			and (
+				source_span like 'object://%'
+				or source_span like 'myhome://%'
 			)
-			or trim(occupancy_type) <> ''
-		)
-		and (
-			(
-				deposit_krw is not null
-				and deposit_krw >= 0
-				and monthly_rent_krw is not null
-				and monthly_rent_krw >= 0
+			and (
+				trim(application_unit_label) <> ''
+				or coalesce(trim(unit_no), '') <> ''
+				or trim(coalesce(nullif(housing_name, ''), complex_name)) <> ''
 			)
-			or (
-				jeonse_deposit_krw is not null
-				and jeonse_deposit_krw >= 0
+			and char_length(application_unit_label) <= 256
+			and char_length(coalesce(nullif(housing_name, ''), complex_name)) <= 128
+			and position('�' in application_unit_label) = 0
+			and position('�' in coalesce(nullif(housing_name, ''), complex_name)) = 0
+			and position('�' in coalesce(unit_no, '')) = 0
+			and (
+				coalesce(trim(unit_no), '') <> ''
+				or (
+					supply_count is not null
+					and supply_count > 0
+				)
 			)
-			or (
-				dormitory_fee_krw is not null
-				and dormitory_fee_krw >= 0
+			and (
+				(
+					exclusive_area_m2 is not null
+					and exclusive_area_m2 > 0
+				)
+				or trim(occupancy_type) <> ''
+				or (
+					supply_count is not null
+					and supply_count > 0
+					and (
+						trim(unit_type) <> ''
+						or trim(supply_category) <> ''
+						or trim(application_category) <> ''
+						or trim(gender_requirement) <> ''
+						or trim(application_unit_label) <> ''
+					)
+				)
+				or (
+					source = 'myhome'
+					and supply_count is not null
+					and supply_count > 0
+				)
 			)
-		)
-	then 'approved'
+			and (
+				(
+					deposit_krw is not null
+					and deposit_krw >= 0
+					and monthly_rent_krw is not null
+					and monthly_rent_krw >= 0
+				)
+				or (
+					jeonse_deposit_krw is not null
+					and jeonse_deposit_krw >= 0
+				)
+				or (
+					dormitory_fee_krw is not null
+					and dormitory_fee_krw >= 0
+				)
+			)
+		) as passes
+	from offerings
+),
+ranked as (
+	select
+		id,
+		passes,
+		min(id) filter (where passes) over (
+			partition by notice_id, attachment_id, source_row_key, unit_key, housing_key, label_key, source_span_key
+		) as canonical_id
+	from evaluated
+)
+update offerings
+set qa_status = case
+	when ranked.passes and offerings.id = ranked.canonical_id then 'approved'
 	else 'rejected'
 end
-where qa_status = 'pending';
+from ranked
+where offerings.id = ranked.id;
 
 -- name: ListExistingNoticeSeqs :many
 select seq

@@ -249,6 +249,11 @@ func buildOfferingCandidate(artifact extraction.ExtractedArtifact, cells []strin
 	unitNo := cellAt(cells, header.unit)
 	gender := cellAt(cells, header.gender)
 	area := parseFloatPtr(cellAt(cells, header.area))
+	supplyCount := parseIntPtr(cellAt(cells, header.count))
+	if unitNo != "" && supplyCount == nil {
+		defaultSupplyCount := 1
+		supplyCount = &defaultSupplyCount
+	}
 	moneyScaleLabel := strings.Join(labels, " ")
 
 	return OfferingCandidate{
@@ -278,7 +283,7 @@ func buildOfferingCandidate(artifact extraction.ExtractedArtifact, cells []strin
 		BalancePaymentKRW:    parseMoneyPtr(cellAt(cells, header.balancePayment), cellAt(labels, header.balancePayment)+" "+moneyScaleLabel),
 		MonthlyRentText:      rentText,
 		MonthlyRentKRW:       parseKRWPtr(rentText),
-		SupplyCount:          parseIntPtr(cellAt(cells, header.count)),
+		SupplyCount:          supplyCount,
 		ReservedCount:        parseIntPtr(cellAt(cells, header.reservedCount)),
 		GenderRequirement:    gender,
 		OccupancyType:        cellAt(cells, header.occupancyType),

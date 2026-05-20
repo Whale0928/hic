@@ -15,6 +15,7 @@ import (
 
 type Repository interface {
 	ListOfferings(ctx context.Context, limit int32, qaStatus string) ([]persistence.OfferingView, error)
+	ListSchedules(ctx context.Context, limit int32) ([]persistence.ScheduleView, error)
 	ListSourceNotices(ctx context.Context, limit int32) ([]persistence.SourceNoticeView, error)
 }
 
@@ -33,6 +34,7 @@ func NewWithDisplay(repo Repository, displayDir string) *echo.Echo {
 	e.HideBanner = true
 	e.GET("/health", server.health)
 	e.GET("/offerings", server.listOfferings)
+	e.GET("/schedules", server.listSchedules)
 	e.GET("/notices", server.listNotices)
 	e.GET("/reports/pdf-offerings", server.pdfOfferingsReport)
 	if displayDir != "" {
@@ -59,6 +61,14 @@ func (s Server) listNotices(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, notices)
+}
+
+func (s Server) listSchedules(c echo.Context) error {
+	schedules, err := s.repo.ListSchedules(c.Request().Context(), parseLimit(c.QueryParam("limit"), 200))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, schedules)
 }
 
 func (s Server) pdfOfferingsReport(c echo.Context) error {

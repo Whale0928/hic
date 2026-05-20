@@ -13,7 +13,9 @@ func TestClassifyAttachment_첨부역할을분류한다(t *testing.T) {
 		{name: "당첨자명단", filename: "청년 매입임대주택 당첨자 명단.xlsx", want: AttachmentKindApplicantOrWinnerFile},
 		{name: "예비자명단", filename: "예비자 명단.pdf", want: AttachmentKindApplicantOrWinnerFile},
 		{name: "신청서", filename: "입주신청서.hwp", want: AttachmentKindApplicationForm},
-		{name: "HWP공고", filename: "모집공고.hwp", want: AttachmentKindUnsupported},
+		{name: "HWP공고", filename: "모집공고.hwp", want: AttachmentKindNoticeHWP},
+		{name: "HWPX공고", filename: "입주자 모집공고.hwpx", want: AttachmentKindNoticeHWP},
+		{name: "공급팸플릿PDF", filename: "[첨부] 공급 주택 팸플릿.pdf", want: AttachmentKindNoticePDF},
 	}
 
 	for _, tt := range tests {

@@ -28,6 +28,12 @@ func (fakeRepository) ListSourceNotices(ctx context.Context, limit int32) ([]per
 	}, nil
 }
 
+func (fakeRepository) ListSchedules(ctx context.Context, limit int32) ([]persistence.ScheduleView, error) {
+	return []persistence.ScheduleView{
+		{ID: 100, NoticeID: 10, ScheduleType: "application", Label: "신청접수", DateText: "20260605~20260609", SourceSpan: "myhome://rsdtRcritNtcList/20364/1#schedule=application"},
+	}, nil
+}
+
 func TestServer_Health(t *testing.T) {
 	e := New(fakeRepository{})
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -82,6 +88,25 @@ func TestServer_Offerings_QA상태를쿼리로지정한다(t *testing.T) {
 	}
 	if len(offerings) != 1 || offerings[0].UnitNo != "pending" {
 		t.Fatalf("offerings = %+v", offerings)
+	}
+}
+
+func TestServer_Schedules_구조화일정을제공한다(t *testing.T) {
+	e := New(fakeRepository{})
+	req := httptest.NewRequest(http.MethodGet, "/schedules?limit=1", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var schedules []persistence.ScheduleView
+	if err := json.Unmarshal(rec.Body.Bytes(), &schedules); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(schedules) != 1 || schedules[0].ScheduleType != "application" {
+		t.Fatalf("schedules = %+v", schedules)
 	}
 }
 

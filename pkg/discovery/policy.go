@@ -12,9 +12,9 @@ const (
 
 func ClassifyNotice(title string, body string) NoticeCategory {
 	switch {
-	case containsAny(title, "당첨자", "서류심사대상자", "동호배정", "결과"):
+	case containsAny(title, "당첨자", "서류심사대상자", "서류심사 대상자", "공급대상자", "입주대상자", "최종심사", "대상자 발표", "동호배정", "동호선정", "결과"):
 		return NoticeCategoryRejected
-	case containsAny(title, "청약경쟁률", "경쟁률", "접수결과", "접수마감"):
+	case containsAny(title, "청약경쟁률", "경쟁률", "접수결과", "접수마감", "접수현황"):
 		return NoticeCategoryRejected
 	case containsAny(title, "계약", "계약체결"):
 		return NoticeCategoryRejected
@@ -22,7 +22,7 @@ func ClassifyNotice(title string, body string) NoticeCategory {
 		return NoticeCategoryRejected
 	case containsAny(body, "서비스 일시중단", "시스템 점검"):
 		return NoticeCategoryRejected
-	case containsAny(title, "모집공고", "입주자 모집", "추가모집", "잔여세대", "공급공고", "정정공고"):
+	case containsAny(title, "모집공고", "입주자 모집", "추가모집", "추가 모집", "잔여세대", "공급공고", "정정공고"):
 		return NoticeCategoryRecruitment
 	case containsAny(body, "입주자 모집", "공급대상"):
 		return NoticeCategoryRecruitment

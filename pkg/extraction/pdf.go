@@ -14,6 +14,21 @@ func ExtractPDFText(path string) (ExtractedArtifact, error) {
 	if err != nil {
 		return ExtractedArtifact{}, err
 	}
+	return pdfTextArtifact(text, sourceSpan), nil
+}
+
+func ExtractPDFTextWithSource(path string, sourceSpan string) (ExtractedArtifact, error) {
+	text, defaultSourceSpan, err := readPDFPlainText(path)
+	if err != nil {
+		return ExtractedArtifact{}, err
+	}
+	if strings.TrimSpace(sourceSpan) == "" {
+		sourceSpan = defaultSourceSpan
+	}
+	return pdfTextArtifact(text, sourceSpan), nil
+}
+
+func pdfTextArtifact(text string, sourceSpan string) ExtractedArtifact {
 	return ExtractedArtifact{
 		Type:          ArtifactTypePDFText,
 		Extractor:     "pdf-plain-text",
@@ -25,11 +40,21 @@ func ExtractPDFText(path string) (ExtractedArtifact, error) {
 			"chars": len([]rune(text)),
 		},
 		Confidence: 1,
-	}, nil
+	}
 }
 
 func ExtractPDFArtifacts(path string) ([]ExtractedArtifact, error) {
 	textArtifact, err := ExtractPDFText(path)
+	if err != nil {
+		return nil, err
+	}
+	artifacts := []ExtractedArtifact{textArtifact}
+	artifacts = append(artifacts, ExtractPDFTableRowsFromText(textArtifact.RawText, textArtifact.SourceSpan)...)
+	return artifacts, nil
+}
+
+func ExtractPDFArtifactsWithSource(path string, sourceSpan string) ([]ExtractedArtifact, error) {
+	textArtifact, err := ExtractPDFTextWithSource(path, sourceSpan)
 	if err != nil {
 		return nil, err
 	}

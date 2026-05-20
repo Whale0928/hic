@@ -234,6 +234,9 @@ create index if not exists idx_extracted_artifacts_type_status on extracted_arti
 create index if not exists idx_extracted_artifacts_content_json on extracted_artifacts using gin(content_json);
 create unique index if not exists uq_extracted_artifacts_attachment_type_span
 	on extracted_artifacts(attachment_id, artifact_type, source_span);
+create unique index if not exists uq_extracted_artifacts_type_span_no_attachment
+	on extracted_artifacts(artifact_type, source_span)
+	where attachment_id is null and source_span <> '';
 
 do $$
 begin
@@ -368,11 +371,13 @@ drop index if exists idx_housing_units_raw_row;
 drop index if exists uq_housing_units_attachment_source_span;
 drop index if exists uq_housing_units_source_identity;
 drop index if exists idx_offerings_type;
+drop index if exists idx_offerings_application_unit_label;
+drop index if exists uq_offerings_source_identity;
 
 create index if not exists idx_offerings_notice_id on offerings(notice_id);
 create index if not exists idx_offerings_attachment_id on offerings(attachment_id);
 create index if not exists idx_offerings_source_artifact_id on offerings(source_artifact_id);
-create index if not exists idx_offerings_application_unit_label on offerings(application_unit_label);
+create index if not exists idx_offerings_application_unit_label_prefix on offerings(left(application_unit_label, 512));
 create index if not exists idx_offerings_application_category on offerings(application_category);
 create index if not exists idx_offerings_area on offerings(exclusive_area_m2);
 create index if not exists idx_offerings_rent on offerings(deposit_amount, monthly_rent_amount);
@@ -382,8 +387,11 @@ create index if not exists idx_offerings_raw_row on offerings using gin(raw_row)
 create unique index if not exists uq_offerings_attachment_source_span
 	on offerings(attachment_id, source_span)
 	where source_span <> '';
+create unique index if not exists uq_offerings_notice_source_span_no_attachment
+	on offerings(notice_id, source_span)
+	where attachment_id is null and source_span <> '';
 create unique index if not exists uq_offerings_source_identity
-	on offerings(notice_id, attachment_id, coalesce(source_row, -1), coalesce(unit_no, ''), coalesce(nullif(housing_name, ''), complex_name))
+	on offerings(notice_id, attachment_id, coalesce(source_row, -1), md5(coalesce(unit_no, '')), md5(coalesce(nullif(housing_name, ''), complex_name, '')), md5(coalesce(application_unit_label, '')), md5(coalesce(source_span, '')))
 	where qa_status = 'approved';
 
 create table if not exists rent_conversion_rules (
@@ -443,6 +451,9 @@ create table if not exists notice_schedules (
 create index if not exists idx_notice_schedules_notice_id on notice_schedules(notice_id);
 create index if not exists idx_notice_schedules_type on notice_schedules(schedule_type);
 create index if not exists idx_notice_schedules_starts_at on notice_schedules(starts_at);
+create unique index if not exists uq_notice_schedules_notice_type_span
+	on notice_schedules(notice_id, schedule_type, source_span)
+	where source_span <> '';
 
 create table if not exists llm_repair_attempts (
 	id bigserial primary key,
@@ -506,7 +517,7 @@ comment on column attachments.storage_path is 'Legacy local prototype path retai
 
 comment on table attachment_extractions is 'Legacy prototype extraction rows retained for compatibility.';
 comment on table extracted_artifacts is 'Mechanical extraction outputs from PDF, XLSX, HWP, or HTML before normalization.';
-comment on column extracted_artifacts.artifact_type is 'Artifact kind such as xlsx_row, pdf_text, html_preview, hwp_unsupported, or table_candidate.';
+comment on column extracted_artifacts.artifact_type is 'Artifact kind such as xlsx_row, pdf_text, html_preview, hwp_text, hwp_unsupported, or table_candidate.';
 comment on column extracted_artifacts.source_span is 'Machine-readable or human-readable pointer to the source page, sheet, row, cell, or HTML selector.';
 comment on column extracted_artifacts.content_json is 'Extractor payload for audit and reprocessing. Serving APIs should use normalized tables.';
 

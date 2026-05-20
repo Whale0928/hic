@@ -9,6 +9,7 @@ import (
 
 	"hic/pkg/discovery"
 	"hic/pkg/extraction"
+	"hic/pkg/llm"
 	"hic/pkg/normalize"
 	"hic/pkg/persistence"
 
@@ -87,13 +88,18 @@ func TestNewRootCommand_도메인서브커맨드Help가동작한다(t *testing.T
 	tests := [][]string{
 		{"discovery", "--help"},
 		{"discovery", "sh", "--help"},
-		{"discovery", "sh-applications", "--help"},
 		{"serve", "--help"},
 		{"extract", "--help"},
+		{"extract", "hwp", "--help"},
+		{"extract", "html", "--help"},
+		{"extract", "hwpx", "--help"},
 		{"normalize", "--help"},
 		{"llm", "--help"},
+		{"llm", "candidates", "--help"},
+		{"llm", "repair", "--help"},
 		{"workflow", "--help"},
 		{"workflow", "collect-sh", "--help"},
+		{"workflow", "collect-lh", "--help"},
 		{"qa", "--help"},
 		{"qa", "promote-offerings", "--help"},
 		{"qa", "pdf-offerings", "--help"},
@@ -115,6 +121,161 @@ func TestNewRootCommand_도메인서브커맨드Help가동작한다(t *testing.T
 			}
 		})
 	}
+}
+
+func TestNewRootCommand_LLMRepairHelp가GPT보정옵션을노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"llm", "repair", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{"--artifact-id", "--dry-run", "--max-input-chars", "--max-attempts", "--model"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("llm repair help missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestNewRootCommand_LLMCandidatesHelp가Limit옵션을노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"llm", "candidates", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{"--limit", "--include-approved-notices", "LLM"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("llm candidates help missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestFormatLLMRepairCandidates_후보목록을출력한다(t *testing.T) {
+	got := formatLLMRepairCandidates([]persistence.LLMRepairArtifact{{
+		ID:               48,
+		NoticeSeq:        "304555",
+		ArtifactType:     "pdf_text",
+		SourceSpan:       "object://hic-originals/sh/304555/notice.pdf",
+		RawText:          "입주자 모집공고",
+		OriginalFilename: "notice.pdf",
+	}})
+
+	for _, want := range []string{
+		"llm_candidates=1",
+		"artifact_id=48",
+		"seq=304555",
+		"raw_chars=8",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("formatLLMRepairCandidates() missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestValidateLLMRepairAttemptLimit_최대시도수이상이면차단한다(t *testing.T) {
+	err := validateLLMRepairAttemptLimit(1500, 1500)
+
+	if err == nil {
+		t.Fatal("validateLLMRepairAttemptLimit() error = nil")
+	}
+	if !strings.Contains(err.Error(), "maximum LLM repair attempts reached") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateLLMRepairAttemptLimit_최대시도수미만이면허용한다(t *testing.T) {
+	if err := validateLLMRepairAttemptLimit(1499, 1500); err != nil {
+		t.Fatalf("validateLLMRepairAttemptLimit() error = %v", err)
+	}
+}
+
+func TestPersistLLMRepairOfferings_성공결과를PendingOffering으로저장한다(t *testing.T) {
+	count := 15
+	store := &fakeLLMRepairOfferingStore{}
+	artifact := persistence.LLMRepairArtifact{ID: 10, NoticeID: 20, AttachmentID: 30}
+	output := llm.RepairOutput{
+		Offerings: []llm.Offering{{
+			ApplicationUnitLabel: "청담르엘 49 일반",
+			HousingName:          "청담르엘",
+			SupplyCount:          &count,
+			SourceSpan:           "object://hic-originals/sh/304271/13-pamphlet.pdf#page=5&row=2",
+			Confidence:           0.8,
+		}},
+	}
+
+	saved, err := persistLLMRepairOfferings(context.Background(), store, artifact, output)
+	if err != nil {
+		t.Fatalf("persistLLMRepairOfferings() error = %v", err)
+	}
+
+	if saved != 1 || len(store.upserts) != 1 {
+		t.Fatalf("saved=%d upserts=%d", saved, len(store.upserts))
+	}
+	if store.deletedArtifactID != 10 {
+		t.Fatalf("deletedArtifactID = %d, want 10", store.deletedArtifactID)
+	}
+	got := store.upserts[0]
+	if got.attachment.NoticeID != 20 || got.attachment.AttachmentID != 30 || got.sourceArtifactID != 10 {
+		t.Fatalf("upsert ref = %+v sourceArtifactID=%d", got.attachment, got.sourceArtifactID)
+	}
+	if got.offering.ApplicationUnitLabel != "청담르엘 49 일반" || got.offering.SourceSpan == "" {
+		t.Fatalf("offering = %+v", got.offering)
+	}
+}
+
+func TestNewRootCommand_LHCollectHelp가MyHome옵션을노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"workflow", "collect-lh", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{"--kind", "--service-key", "--num-rows", "--all-pages", "--agency-filter", "--show-items", "MyHome"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("collect-lh help missing %q:\n%s", want, help)
+		}
+	}
+}
+
+type fakeLLMRepairOfferingStore struct {
+	deletedArtifactID int64
+	upserts           []fakeLLMRepairOfferingUpsert
+}
+
+type fakeLLMRepairOfferingUpsert struct {
+	attachment       persistence.PersistedAttachment
+	sourceArtifactID int64
+	offering         normalize.OfferingCandidate
+}
+
+func (f *fakeLLMRepairOfferingStore) UpsertOffering(ctx context.Context, attachment persistence.PersistedAttachment, sourceArtifactID int64, offering normalize.OfferingCandidate) (int64, error) {
+	f.upserts = append(f.upserts, fakeLLMRepairOfferingUpsert{
+		attachment:       attachment,
+		sourceArtifactID: sourceArtifactID,
+		offering:         offering,
+	})
+	return int64(len(f.upserts)), nil
+}
+
+func (f *fakeLLMRepairOfferingStore) DeleteLLMRepairOfferings(ctx context.Context, sourceArtifactID int64) error {
+	f.deletedArtifactID = sourceArtifactID
+	return nil
 }
 
 func TestNewRootCommand_SHApplicationsHelp를노출한다(t *testing.T) {
@@ -151,6 +312,44 @@ func TestNewRootCommand_CollectSHHelp가ActiveApplication옵션을노출한다(t
 	for _, want := range []string{"--active-applications", "--active-sply-ty", "--active-max-pages", "--discovery-cache"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("collect-sh help missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestNewRootCommand_HWPXExtractHelp가File옵션을노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"extract", "hwpx", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{"HWPX", "--file"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("extract hwpx help missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestNewRootCommand_HWPExtractHelp가File옵션을노출한다(t *testing.T) {
+	cmd := NewRootCommand(context.Background())
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"extract", "hwp", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	help := out.String()
+	for _, want := range []string{"HWP", "--file"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("extract hwp help missing %q:\n%s", want, help)
 		}
 	}
 }
@@ -232,7 +431,7 @@ func TestFormatCollectionSummary_QA승격결과를함께출력한다(t *testing.
 		Pending:  0,
 	})
 
-	want := "db stored_objects=31 extracted_artifacts=42 offerings=28 inserted_artifacts=31 upserted_offerings=28 qa_approved=28 qa_rejected=0 qa_pending=0\n"
+	want := "db stored_objects=31 extracted_artifacts=42 offerings=28 upserted_artifacts=31 upserted_offerings=28 qa_approved=28 qa_rejected=0 qa_pending=0\n"
 	if got != want {
 		t.Fatalf("formatCollectionSummary() = %q, want %q", got, want)
 	}
@@ -344,7 +543,7 @@ func TestCollectionRunStats_수집통계를구성한다(t *testing.T) {
 		"skipped_known":      3,
 		"stopped_by_cutoff":  true,
 		"downloaded":         7,
-		"inserted_artifacts": 31,
+		"upserted_artifacts": 31,
 		"upserted_offerings": 25,
 		"stored_objects":     int64(7),
 		"total_artifacts":    int64(31),

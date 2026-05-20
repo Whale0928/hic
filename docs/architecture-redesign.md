@@ -24,7 +24,7 @@ discovery
   게시판 탐색, 모집공고 계열 판정, 첨부 메타 발견
 
 extraction
-  원본 파일 보존, PDF/XLSX/HWP/HTML 기계적 추출
+  원본 파일 보존, PDF/XLSX/HWP/HWPX/HTML 기계적 추출
 
 normalize
   추출 산출물을 도메인 필드로 정규화
@@ -91,6 +91,7 @@ qa
 4. 타입별 extractor를 실행한다.
 5. extractor가 없으면 `unsupported` artifact를 만든다.
 6. 추출 실패는 attachment 단위로 격리한다.
+7. DB의 `source_span`은 로컬 저장 경로가 아니라 `object://<bucket>/<key>...` 또는 외부 API 원천을 나타내는 `myhome://...`처럼 재실행해도 변하지 않는 논리 식별자를 사용한다.
 
 금지:
 
@@ -115,6 +116,8 @@ qa
 2. prompt version, schema version, model, input hash를 저장한다.
 3. source span 없는 LLM 결과는 폐기한다.
 4. deterministic 결과와 충돌하면 QA가 승인하기 전까지 serving으로 승격하지 않는다.
+5. `.env`의 API 키를 사용하되, 정제 시도 횟수는 설정값과 관계없이 최대 1500회로 제한한다.
+6. 한 artifact에서 여러 공급항목이 나오면 `#llm_item=N` suffix를 붙여 같은 입력의 offering별 source span이 안정적으로 구분되게 한다.
 
 ## 6. 필수 정규화 도메인
 
@@ -208,7 +211,7 @@ QA는 `application_unit_label`, `housing_name`/`complex_name`, `unit_no`, `suppl
 - MinIO 없이도 local filesystem object storage로 동일 검증을 수행할 수 있어야 한다.
 - PDF는 page/text artifact를 만든다.
 - XLSX는 sheet/row artifact를 만든다.
-- HWP는 extractor 준비 전까지 `unsupported` artifact로 남긴다.
+- HWPX는 zip/xml 기반 text artifact를 만들고, HWP는 `hwp5txt` 등 외부 extractor가 있으면 text artifact를 만들며 없으면 `hwp_unsupported` artifact로 격리한다.
 
 ### Normalize QA
 
@@ -223,12 +226,14 @@ QA는 `application_unit_label`, `housing_name`/`complex_name`, `unit_no`, `suppl
 - 결과 JSON은 schema validation을 통과해야 한다.
 - 모든 필드에 source span이 있어야 한다.
 - prompt/schema/model/input hash가 저장되어야 한다.
+- LLM 후보 조회 기본값은 이미 QA-approved offering이 있는 공고를 제외해 보정 대상만 노출해야 한다.
 
 ### Workflow QA
 
 - discovery, extraction, normalize, llm, qa 단계별 checkpoint가 있어야 한다.
 - 실패한 attachment 또는 artifact만 재실행 가능해야 한다.
 - QA gate 실패 데이터는 serving/API로 승격하지 않는다.
+- approved offering의 source span은 `object://` 또는 `myhome://` 계열이어야 하며, `.data/...` 같은 로컬 경로 기반 span은 QA에서 거부한다.
 
 ## 8. 패키지와 커맨드
 
@@ -251,11 +256,18 @@ hic discovery sh --board rental --pages 10
 hic discovery sh --board sale --pages 10
 hic extract attachment --id 123
 hic extract pdf --file data/samples/sh/recruitment_pdf/sample.pdf
+hic extract html --file data/samples/sh/detail.html
+hic extract hwpx --file data/samples/sh/recruitment.hwpx
+hic extract hwp --file data/samples/sh/recruitment.hwp
 hic normalize notice --id 123
 hic normalize schedules --notice-id 123
 hic normalize conversion --notice-id 123
+hic llm candidates --limit 20
 hic llm repair --artifact-id 123
 hic workflow collect-sh --board rental --pages 20
+hic workflow collect-lh --kind rental --num-rows 200 --all-pages --agency-filter LH
+hic workflow collect-lh --kind sale --num-rows 200 --all-pages --agency-filter LH
+hic qa promote-offerings
 hic qa sample --case youth-rent-2025
 ```
 

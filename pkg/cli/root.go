@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -10,9 +11,11 @@ import (
 
 	"hic/pkg/api"
 	"hic/pkg/discovery"
+	lhdiscovery "hic/pkg/discovery/lh"
 	shdiscovery "hic/pkg/discovery/sh"
 	"hic/pkg/extraction"
 	"hic/pkg/global"
+	"hic/pkg/llm"
 	"hic/pkg/normalize"
 	"hic/pkg/persistence"
 	"hic/pkg/workflow"
@@ -37,8 +40,8 @@ func NewRootCommand(ctx context.Context) *cobra.Command {
 		newDiscoveryCommand(ctx, cfg),
 		newExtractCommand(),
 		newNormalizeCommand(),
-		newLLMCommand(),
-		newWorkflowCommand(),
+		newLLMCommand(ctx, cfg),
+		newWorkflowCommand(ctx, cfg),
 		newQACommand(ctx, cfg),
 	)
 
@@ -248,7 +251,7 @@ func newHelpCommand() *cobra.Command {
 	}
 }
 
-func collectionRunStats(report discovery.Report, downloaded int, insertedArtifacts int, upsertedOfferings int, storedObjects int64, totalArtifacts int64, totalOfferings int64) map[string]any {
+func collectionRunStats(report discovery.Report, downloaded int, upsertedArtifacts int, upsertedOfferings int, storedObjects int64, totalArtifacts int64, totalOfferings int64) map[string]any {
 	return map[string]any{
 		"pages":              report.Pages,
 		"list_rows":          report.ListRows,
@@ -260,7 +263,7 @@ func collectionRunStats(report discovery.Report, downloaded int, insertedArtifac
 		"skipped_seen":       report.SkippedSeen,
 		"stopped_by_cutoff":  report.StoppedByCutoff,
 		"downloaded":         downloaded,
-		"inserted_artifacts": insertedArtifacts,
+		"upserted_artifacts": upsertedArtifacts,
 		"upserted_offerings": upsertedOfferings,
 		"stored_objects":     storedObjects,
 		"total_artifacts":    totalArtifacts,
@@ -385,9 +388,75 @@ func newExtractCommand() *cobra.Command {
 	}
 	cmd.AddCommand(
 		placeholderCommand("attachment", "저장된 첨부 원본을 추출합니다"),
+		newExtractHWPCommand(),
+		newExtractHTMLCommand(),
+		newExtractHWPXCommand(),
 		newExtractPDFCommand(),
 		newExtractXLSXCommand(),
 	)
+	return cmd
+}
+
+func newExtractHWPCommand() *cobra.Command {
+	var file string
+	cmd := &cobra.Command{
+		Use:   "hwp",
+		Short: "HWP 파일에서 텍스트 artifact를 추출합니다",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if file == "" {
+				return fmt.Errorf("--file is required")
+			}
+			artifact, err := extraction.ExtractHWPTextWithSource(file, "")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "type=%s status=%s chars=%d source=%s\n", artifact.Type, artifact.Status, len([]rune(artifact.RawText)), artifact.SourceSpan)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "HWP 파일 경로")
+	return cmd
+}
+
+func newExtractHTMLCommand() *cobra.Command {
+	var file string
+	cmd := &cobra.Command{
+		Use:   "html",
+		Short: "HTML 미리보기에서 텍스트 artifact를 추출합니다",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if file == "" {
+				return fmt.Errorf("--file is required")
+			}
+			artifact, err := extraction.ExtractHTMLPreview(file)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "type=%s status=%s chars=%d source=%s\n", artifact.Type, artifact.Status, len([]rune(artifact.RawText)), artifact.SourceSpan)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "HTML 파일 경로")
+	return cmd
+}
+
+func newExtractHWPXCommand() *cobra.Command {
+	var file string
+	cmd := &cobra.Command{
+		Use:   "hwpx",
+		Short: "HWPX 파일에서 텍스트 artifact를 추출합니다",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if file == "" {
+				return fmt.Errorf("--file is required")
+			}
+			artifact, err := extraction.ExtractHWPXText(file)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "type=%s status=%s chars=%d source=%s\n", artifact.Type, artifact.Status, len([]rune(artifact.RawText)), artifact.SourceSpan)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "HWPX 파일 경로")
 	return cmd
 }
 
@@ -447,22 +516,377 @@ func newNormalizeCommand() *cobra.Command {
 	return cmd
 }
 
-func newLLMCommand() *cobra.Command {
+func newLLMCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "llm",
 		Short: "낮은 신뢰도의 artifact를 LLM 보조로 보정합니다",
 	}
-	cmd.AddCommand(placeholderCommand("repair", "artifact LLM 보정을 실행합니다"))
+	cmd.AddCommand(
+		newLLMCandidatesCommand(ctx, cfg),
+		newLLMRepairCommand(ctx, cfg),
+	)
 	return cmd
 }
 
-func newWorkflowCommand() *cobra.Command {
+func newLLMCandidatesCommand(ctx context.Context, cfg global.Config) *cobra.Command {
+	var limit int32
+	var includeApprovedNotices bool
+	cmd := &cobra.Command{
+		Use:   "candidates",
+		Short: "LLM 보정 후보 artifact를 조회합니다",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repo, err := persistence.Open(ctx, cfg.DatabaseURL)
+			if err != nil {
+				return err
+			}
+			defer repo.Close()
+			candidates, err := repo.ListLLMRepairCandidates(ctx, limit, includeApprovedNotices)
+			if err != nil {
+				return err
+			}
+			fmt.Fprint(cmd.OutOrStdout(), formatLLMRepairCandidates(candidates))
+			return nil
+		},
+	}
+	cmd.Flags().Int32Var(&limit, "limit", 20, "조회할 LLM 보정 후보 수")
+	cmd.Flags().BoolVar(&includeApprovedNotices, "include-approved-notices", false, "이미 QA-approved Offering이 있는 공고의 artifact도 후보에 포함합니다")
+	return cmd
+}
+
+func formatLLMRepairCandidates(candidates []persistence.LLMRepairArtifact) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "llm_candidates=%d\n", len(candidates))
+	for _, candidate := range candidates {
+		fmt.Fprintf(
+			&b,
+			"artifact_id=%d seq=%s type=%s raw_chars=%d file=%q source=%s\n",
+			candidate.ID,
+			candidate.NoticeSeq,
+			candidate.ArtifactType,
+			len([]rune(candidate.RawText)),
+			candidate.OriginalFilename,
+			candidate.SourceSpan,
+		)
+	}
+	return b.String()
+}
+
+func newLLMRepairCommand(ctx context.Context, cfg global.Config) *cobra.Command {
+	var artifactID int64
+	var dryRun bool
+	var maxInputChars int
+	var maxAttempts int
+	var model string
+
+	cmd := &cobra.Command{
+		Use:   "repair",
+		Short: "artifact를 GPT 기반 LLM 보조로 보정합니다",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if artifactID <= 0 {
+				return fmt.Errorf("--artifact-id is required")
+			}
+			if maxAttempts <= 0 || maxAttempts > 1500 {
+				return fmt.Errorf("--max-attempts must be between 1 and 1500")
+			}
+			repo, err := persistence.Open(ctx, cfg.DatabaseURL)
+			if err != nil {
+				return err
+			}
+			defer repo.Close()
+
+			artifact, err := repo.GetLLMRepairArtifact(ctx, artifactID)
+			if err != nil {
+				return err
+			}
+			input := llm.RepairInput{
+				ArtifactID:    artifact.ID,
+				ArtifactType:  artifact.ArtifactType,
+				NoticeSeq:     artifact.NoticeSeq,
+				NoticeTitle:   artifact.NoticeTitle,
+				OriginalFile:  artifact.OriginalFilename,
+				SourceSpan:    artifact.SourceSpan,
+				RawText:       artifact.RawText,
+				ContentJSON:   json.RawMessage(artifact.ContentJSON),
+				Confidence:    artifact.Confidence,
+				MaxInputChars: maxInputChars,
+			}
+
+			if dryRun {
+				request, inputHash, err := llm.BuildRepairRequest(input, model)
+				if err != nil {
+					return err
+				}
+				requestJSON, err := json.MarshalIndent(request, "", "  ")
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "llm repair artifact_id=%d model=%s input_hash=%s max_attempts=%d dry_run=true\n", artifactID, firstNonEmptyString(model, cfg.OpenAIModel, llm.DefaultModel), inputHash, maxAttempts)
+				fmt.Fprintln(cmd.OutOrStdout(), string(requestJSON))
+				return nil
+			}
+
+			attemptCount, err := repo.CountLLMRepairAttempts(ctx)
+			if err != nil {
+				return err
+			}
+			if err := validateLLMRepairAttemptLimit(attemptCount, maxAttempts); err != nil {
+				return err
+			}
+
+			client := llm.Client{
+				APIKey:   cfg.OpenAIAPIKey,
+				Model:    model,
+				Endpoint: cfg.OpenAIBaseURL,
+			}
+			output, attempt, repairErr := client.RepairOfferings(ctx, input)
+			attemptID, insertErr := repo.InsertLLMRepairAttempt(ctx, attempt)
+			if insertErr != nil {
+				return insertErr
+			}
+			if repairErr != nil {
+				return fmt.Errorf("llm repair failed attempt_id=%d: %w", attemptID, repairErr)
+			}
+			upsertedOfferings, err := persistLLMRepairOfferings(ctx, repo, artifact, output)
+			if err != nil {
+				return fmt.Errorf("llm repair succeeded attempt_id=%d but offering persistence failed: %w", attemptID, err)
+			}
+			fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"llm repair attempt_id=%d artifact_id=%d status=%s offerings=%d upserted_offerings=%d confidence=%.2f input_hash=%s output_hash=%s\n",
+				attemptID,
+				artifactID,
+				attempt.Status,
+				len(output.Offerings),
+				upsertedOfferings,
+				output.Confidence,
+				attempt.InputHash,
+				attempt.OutputHash,
+			)
+			return nil
+		},
+	}
+	cmd.Flags().Int64Var(&artifactID, "artifact-id", 0, "보정할 extracted_artifacts.id")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "OpenAI API 호출 없이 요청 JSON만 출력합니다")
+	cmd.Flags().StringVar(&model, "model", cfg.OpenAIModel, "사용할 OpenAI 모델")
+	cmd.Flags().IntVar(&maxInputChars, "max-input-chars", 12000, "LLM 입력 raw_text 최대 문자 수")
+	cmd.Flags().IntVar(&maxAttempts, "max-attempts", cfg.LLMMaxAttempts, "LLM 정제 최대 시도 횟수(최대 1500)")
+	return cmd
+}
+
+func validateLLMRepairAttemptLimit(existingAttempts int64, maxAttempts int) error {
+	if maxAttempts <= 0 || maxAttempts > 1500 {
+		return fmt.Errorf("--max-attempts must be between 1 and 1500")
+	}
+	if existingAttempts >= int64(maxAttempts) {
+		return fmt.Errorf("maximum LLM repair attempts reached: existing=%d max=%d", existingAttempts, maxAttempts)
+	}
+	return nil
+}
+
+type llmRepairOfferingStore interface {
+	UpsertOffering(ctx context.Context, attachment persistence.PersistedAttachment, sourceArtifactID int64, offering normalize.OfferingCandidate) (int64, error)
+}
+
+type llmRepairOfferingCleaner interface {
+	DeleteLLMRepairOfferings(ctx context.Context, sourceArtifactID int64) error
+}
+
+func persistLLMRepairOfferings(ctx context.Context, store llmRepairOfferingStore, artifact persistence.LLMRepairArtifact, output llm.RepairOutput) (int, error) {
+	attachment, err := artifact.LLMRepairAttachmentRef()
+	if err != nil {
+		return 0, err
+	}
+	if cleaner, ok := store.(llmRepairOfferingCleaner); ok {
+		if err := cleaner.DeleteLLMRepairOfferings(ctx, artifact.ID); err != nil {
+			return 0, err
+		}
+	}
+	offerings := persistence.PrepareLLMRepairOfferings(output)
+	upserted := 0
+	for _, offering := range offerings {
+		if _, err := store.UpsertOffering(ctx, attachment, artifact.ID, offering); err != nil {
+			return upserted, err
+		}
+		upserted++
+	}
+	return upserted, nil
+}
+
+func newWorkflowCommand(ctx context.Context, cfg global.Config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workflow",
 		Short: "discovery, extraction, normalization, QA를 오케스트레이션합니다",
 	}
-	cmd.AddCommand(newWorkflowCollectSHCommand())
+	cmd.AddCommand(
+		newWorkflowCollectSHCommand(),
+		newWorkflowCollectLHCommand(ctx, cfg),
+	)
 	return cmd
+}
+
+func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.Command {
+	var kind string
+	var pages int
+	var numRows int
+	var dryRun bool
+	var serviceKey string
+	var allPages bool
+	var agencyFilter string
+	var showItems bool
+
+	cmd := &cobra.Command{
+		Use:   "collect-lh",
+		Short: "LH/MyHome OpenAPI 수집 워크플로우를 실행합니다",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			endpoint, err := myHomeEndpointFromKind(kind)
+			if err != nil {
+				return err
+			}
+			key := firstNonEmptyString(serviceKey, cfg.MyHomeAPIKey)
+			if strings.TrimSpace(key) == "" {
+				return fmt.Errorf("MYHOME_API_KEY or --service-key is required")
+			}
+			client := lhdiscovery.MyHomeClient{ServiceKey: key}
+			var items []lhdiscovery.MyHomeNoticeItem
+			totalCount := 0
+			pagesToFetch := pages
+			for page := 1; page <= pagesToFetch; page++ {
+				result, err := client.ListNotices(ctx, endpoint, page, numRows)
+				if err != nil {
+					return err
+				}
+				if result.TotalCount > totalCount {
+					totalCount = result.TotalCount
+				}
+				if page == 1 {
+					pagesToFetch = lhdiscovery.MyHomePagesToFetch(totalCount, numRows, allPages, pages)
+				}
+				items = append(items, result.Items...)
+			}
+			rawItems := len(items)
+			items = lhdiscovery.FilterMyHomeItemsByAgency(items, agencyFilter)
+			fmt.Fprintf(cmd.OutOrStdout(), "agency=LH source=myhome kind=%s endpoint=%s pages=%d total_count=%d items=%d raw_items=%d agency_filter=%q dry_run=%t\n", kind, endpoint, pagesToFetch, totalCount, len(items), rawItems, agencyFilter, dryRun)
+			if dryRun {
+				if showItems {
+					for _, item := range items {
+						fmt.Fprintf(cmd.OutOrStdout(), "candidate seq=%s agency=%s title=%q supply_count=%s\n", item.SourceSeq(), item.Agency, item.Title, intPtrString(item.SupplyCount))
+					}
+				}
+				return nil
+			}
+
+			if err := persistence.Migrate(ctx, cfg.DatabaseURL); err != nil {
+				return err
+			}
+			repo, err := persistence.Open(ctx, cfg.DatabaseURL)
+			if err != nil {
+				return err
+			}
+			defer repo.Close()
+
+			runID, err := repo.CreateCollectionRun(ctx, "myhome:"+kind)
+			if err != nil {
+				return err
+			}
+			upsertedArtifacts := 0
+			upsertedOfferings := 0
+			upsertedSchedules := 0
+			defer func() {
+				status := persistence.CollectionRunStatusSucceeded
+				errorText := ""
+				if err != nil {
+					status = persistence.CollectionRunStatusFailed
+					errorText = err.Error()
+				}
+				stats := map[string]any{
+					"kind":               kind,
+					"endpoint":           string(endpoint),
+					"pages":              pages,
+					"pages_fetched":      pagesToFetch,
+					"num_rows":           numRows,
+					"total_count":        totalCount,
+					"items":              len(items),
+					"raw_items":          rawItems,
+					"agency_filter":      agencyFilter,
+					"upserted_artifacts": upsertedArtifacts,
+					"upserted_offerings": upsertedOfferings,
+					"upserted_schedules": upsertedSchedules,
+				}
+				finishErr := repo.FinishCollectionRun(ctx, runID, status, stats, errorText)
+				if err == nil && finishErr != nil {
+					err = finishErr
+				}
+			}()
+
+			for _, item := range items {
+				noticeID, err := repo.SaveMyHomeNotice(ctx, endpoint, item)
+				if err != nil {
+					return err
+				}
+				artifactID, sourceSpan, err := repo.InsertMyHomeArtifact(ctx, endpoint, item)
+				if err != nil {
+					return err
+				}
+				upsertedArtifacts++
+				offering := normalize.OfferingFromMyHomeItem(item, sourceSpan)
+				if _, err := repo.UpsertMyHomeOffering(ctx, noticeID, artifactID, item.Agency, offering); err != nil {
+					return err
+				}
+				upsertedOfferings++
+				if schedule, ok := normalize.ApplicationScheduleFromMyHomeItem(item, noticeID, sourceSpan); ok {
+					schedule.SourceArtifactID = artifactID
+					if _, err := repo.UpsertNoticeSchedule(ctx, schedule); err != nil {
+						return err
+					}
+					upsertedSchedules++
+				}
+			}
+			storedObjects, totalArtifacts, err := repo.Counts(ctx)
+			if err != nil {
+				return err
+			}
+			totalOfferings, err := repo.CountOfferings(ctx)
+			if err != nil {
+				return err
+			}
+			qaSummary, err := repo.PromoteOfferingsQA(ctx)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "db stored_objects=%d extracted_artifacts=%d offerings=%d upserted_artifacts=%d upserted_offerings=%d upserted_schedules=%d qa_approved=%d qa_rejected=%d qa_pending=%d\n",
+				storedObjects,
+				totalArtifacts,
+				totalOfferings,
+				upsertedArtifacts,
+				upsertedOfferings,
+				upsertedSchedules,
+				qaSummary.Approved,
+				qaSummary.Rejected,
+				qaSummary.Pending,
+			)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "rental", "MyHome 모집공고 종류: rental 또는 sale")
+	cmd.Flags().IntVar(&pages, "pages", 1, "조회할 API 페이지 수")
+	cmd.Flags().IntVar(&numRows, "num-rows", 200, "페이지당 요청 건수")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "DB 저장 없이 MyHome 후보만 보고합니다")
+	cmd.Flags().StringVar(&serviceKey, "service-key", cfg.MyHomeAPIKey, "MyHome OpenAPI serviceKey")
+	cmd.Flags().BoolVar(&allPages, "all-pages", false, "첫 페이지 totalCount 기준으로 모든 MyHome 페이지를 조회합니다")
+	cmd.Flags().StringVar(&agencyFilter, "agency-filter", "", "특정 공급기관명만 저장/출력합니다. 예: LH")
+	cmd.Flags().BoolVar(&showItems, "show-items", false, "dry-run에서 MyHome 후보 목록을 상세 출력합니다")
+	return cmd
+}
+
+func myHomeEndpointFromKind(kind string) (lhdiscovery.MyHomeEndpoint, error) {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "", "rental", "rent", "rsdt":
+		return lhdiscovery.MyHomeRental, nil
+	case "sale", "lt", "분양":
+		return lhdiscovery.MyHomeSale, nil
+	default:
+		return "", fmt.Errorf("unknown MyHome kind: %s", kind)
+	}
 }
 
 func newWorkflowCollectSHCommand() *cobra.Command {
@@ -500,8 +924,9 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			var report discovery.Report
 			var runID int64
 			var downloaded int
-			var insertedArtifacts int
+			var upsertedArtifacts int
 			var upsertedOfferings int
+			var upsertedSchedules int
 			var upsertedApplications int
 			var linkedApplications int
 			var upsertedDiscoverySeen int
@@ -520,7 +945,8 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 						status = persistence.CollectionRunStatusFailed
 						errorText = err.Error()
 					}
-					stats := collectionRunStats(report, downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings)
+					stats := collectionRunStats(report, downloaded, upsertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings)
+					stats["upserted_schedules"] = upsertedSchedules
 					stats["upserted_application_notices"] = upsertedApplications
 					stats["linked_application_notices"] = linkedApplications
 					stats["upserted_discovery_seen_cache"] = upsertedDiscoverySeen
@@ -608,14 +1034,23 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 					if err != nil {
 						return err
 					}
+					previewArtifacts, err := workflow.ExtractPreservedPreview(objectStore, attachment.PreviewObjectKey)
+					if err != nil {
+						return err
+					}
+					artifacts = append(artifacts, previewArtifacts...)
 					artifactIDsBySpan := make(map[string]int64, len(artifacts))
 					for _, artifact := range artifacts {
-						artifactID, err := repo.InsertArtifact(cmd.Context(), attachment.AttachmentID, attachment.StoredObjectID, artifact)
+						storedObjectID := attachment.StoredObjectID
+						if artifact.Type == extraction.ArtifactTypeHTMLPreview && attachment.PreviewStoredObjectID > 0 {
+							storedObjectID = attachment.PreviewStoredObjectID
+						}
+						artifactID, err := repo.InsertArtifact(cmd.Context(), attachment.AttachmentID, storedObjectID, artifact)
 						if err != nil {
 							return err
 						}
 						artifactIDsBySpan[artifact.SourceSpan] = artifactID
-						insertedArtifacts++
+						upsertedArtifacts++
 					}
 					for _, offering := range normalizeOfferingsFromArtifacts(attachment.Kind, artifacts) {
 						artifactID := artifactIDsBySpan[offering.SourceSpan]
@@ -623,6 +1058,16 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 							return err
 						}
 						upsertedOfferings++
+					}
+					for _, schedule := range normalize.InferSchedulesFromTextArtifacts(artifacts, attachment.NoticeID) {
+						schedule.SourceArtifactID = sourceArtifactIDForSchedule(schedule.SourceSpan, artifactIDsBySpan)
+						if schedule.SourceArtifactID == 0 {
+							continue
+						}
+						if _, err := repo.UpsertNoticeSchedule(cmd.Context(), schedule); err != nil {
+							return err
+						}
+						upsertedSchedules++
 					}
 				}
 			}
@@ -658,7 +1103,8 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(cmd.OutOrStdout(), formatCollectionSummary(downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings, qaSummary))
+			fmt.Fprint(cmd.OutOrStdout(), formatCollectionSummary(downloaded, upsertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings, qaSummary))
+			fmt.Fprintf(cmd.OutOrStdout(), "schedules upserted_schedules=%d\n", upsertedSchedules)
 			if activeApplications {
 				fmt.Fprintf(cmd.OutOrStdout(), "application_notices upserted=%d linked=%d\n", upsertedApplications, linkedApplications)
 			}
@@ -728,7 +1174,7 @@ func discoverySeenCacheInputFromRejectedPost(rejected discovery.RejectedPost, no
 
 func formatCollectionSummary(downloaded int, upsertedArtifacts int, upsertedOfferings int, storedObjects int64, totalArtifacts int64, totalOfferings int64, qaSummary persistence.QASummary) string {
 	return fmt.Sprintf(
-		"db stored_objects=%d extracted_artifacts=%d offerings=%d inserted_artifacts=%d upserted_offerings=%d qa_approved=%d qa_rejected=%d qa_pending=%d\n",
+		"db stored_objects=%d extracted_artifacts=%d offerings=%d upserted_artifacts=%d upserted_offerings=%d qa_approved=%d qa_rejected=%d qa_pending=%d\n",
 		storedObjects,
 		totalArtifacts,
 		totalOfferings,
@@ -771,23 +1217,17 @@ func normalizeOfferingsFromArtifacts(kind extraction.AttachmentKind, artifacts [
 	}
 }
 
+func sourceArtifactIDForSchedule(scheduleSourceSpan string, artifactIDsBySpan map[string]int64) int64 {
+	base, _, _ := strings.Cut(scheduleSourceSpan, "#schedule=")
+	return artifactIDsBySpan[base]
+}
+
 func extractPreservedAttachment(objectStore extraction.LocalObjectStore, attachment persistence.PersistedAttachment) ([]extraction.ExtractedArtifact, error) {
-	path, err := objectStore.PathForKey(attachment.ObjectKey)
-	if err != nil {
-		return nil, err
-	}
-	switch attachment.Kind {
-	case extraction.AttachmentKindNoticePDF, extraction.AttachmentKindSchedulePDF:
-		artifacts, err := extraction.ExtractPDFArtifacts(path)
-		if err != nil {
-			return nil, err
-		}
-		return artifacts, nil
-	case extraction.AttachmentKindOfferingListXLSX:
-		return extraction.ExtractXLSXRows(path)
-	default:
-		return nil, nil
-	}
+	return workflow.ExtractPreservedAttachment(objectStore, workflow.PreservedAttachmentRef{
+		ObjectKey: attachment.ObjectKey,
+		Filename:  attachment.Filename,
+		Kind:      attachment.Kind,
+	})
 }
 
 func newQACommand(ctx context.Context, cfg global.Config) *cobra.Command {

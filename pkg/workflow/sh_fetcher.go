@@ -58,6 +58,41 @@ func (f *SHAttachmentFetcher) FetchAttachment(ctx context.Context, board discove
 	}, nil
 }
 
+func (f *SHAttachmentFetcher) FetchAttachmentPreview(ctx context.Context, board discovery.Board, attachment discovery.AttachmentMeta) (AttachmentDocument, error) {
+	if attachment.PreviewPath == "" {
+		return AttachmentDocument{}, fmt.Errorf("attachment preview path is required")
+	}
+	base, err := url.Parse(board.BaseURL)
+	if err != nil {
+		return AttachmentDocument{}, fmt.Errorf("parse board base URL: %w", err)
+	}
+	u, err := base.Parse(attachment.PreviewPath)
+	if err != nil {
+		return AttachmentDocument{}, fmt.Errorf("parse preview path: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return AttachmentDocument{}, err
+	}
+	req.Header.Set("User-Agent", "hic-workflow/0.1 (+public housing attachment preview preservation)")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return AttachmentDocument{}, fmt.Errorf("download attachment preview: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = resp.Body.Close()
+		return AttachmentDocument{}, fmt.Errorf("download attachment preview: unexpected status %d", resp.StatusCode)
+	}
+
+	return AttachmentDocument{
+		ContentType: resp.Header.Get("Content-Type"),
+		Body:        resp.Body,
+	}, nil
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if value != "" {

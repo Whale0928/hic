@@ -29,6 +29,25 @@ func TestExtractPDFText_텍스트Artifact를생성한다(t *testing.T) {
 	}
 }
 
+func TestExtractPDFArtifactsWithSource_ObjectKey를SourceSpan으로사용한다(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.pdf")
+	if err := os.WriteFile(path, minimalPDF("Hello HIC"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	artifacts, err := ExtractPDFArtifactsWithSource(path, "object://hic-originals/sh/304295/1-notice.pdf")
+	if err != nil {
+		t.Fatalf("ExtractPDFArtifactsWithSource() error = %v", err)
+	}
+
+	if len(artifacts) == 0 {
+		t.Fatalf("artifacts is empty")
+	}
+	if artifacts[0].SourceSpan != "object://hic-originals/sh/304295/1-notice.pdf" {
+		t.Fatalf("SourceSpan = %q", artifacts[0].SourceSpan)
+	}
+}
+
 func TestCleanExtractedText_nullByte를제거한다(t *testing.T) {
 	got := cleanExtractedText("a\x00b")
 	if got != "ab" {

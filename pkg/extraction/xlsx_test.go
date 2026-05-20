@@ -48,3 +48,27 @@ func TestExtractXLSXRows_행Artifact를생성한다(t *testing.T) {
 		t.Fatalf("artifact content = %+v", got.Content)
 	}
 }
+
+func TestExtractXLSXRowsWithSource_ObjectKey를SourceSpan으로사용한다(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "units.xlsx")
+	f := excelize.NewFile()
+	sheet := f.GetSheetName(0)
+	if err := f.SetCellValue(sheet, "A1", "호"); err != nil {
+		t.Fatalf("SetCellValue() error = %v", err)
+	}
+	if err := f.SetCellValue(sheet, "A2", "1201"); err != nil {
+		t.Fatalf("SetCellValue() error = %v", err)
+	}
+	if err := f.SaveAs(path); err != nil {
+		t.Fatalf("SaveAs() error = %v", err)
+	}
+
+	artifacts, err := ExtractXLSXRowsWithSource(path, "object://hic-originals/sh/304295/2-units.xlsx")
+	if err != nil {
+		t.Fatalf("ExtractXLSXRowsWithSource() error = %v", err)
+	}
+
+	if got := artifacts[1].SourceSpan; got != "object://hic-originals/sh/304295/2-units.xlsx#sheet=Sheet1&row=2" {
+		t.Fatalf("SourceSpan = %q", got)
+	}
+}

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"hic/pkg/discovery"
+	lhdiscovery "hic/pkg/discovery/lh"
 	"hic/pkg/extraction"
+	"hic/pkg/llm"
 	"hic/pkg/normalize"
 	"hic/pkg/persistence/db"
 	"hic/pkg/workflow"
@@ -24,12 +26,15 @@ type Repository struct {
 }
 
 type PersistedAttachment struct {
-	NoticeID       int64
-	StoredObjectID int64
-	AttachmentID   int64
-	FileSeq        string
-	ObjectKey      string
-	Kind           extraction.AttachmentKind
+	NoticeID              int64
+	StoredObjectID        int64
+	AttachmentID          int64
+	PreviewStoredObjectID int64
+	FileSeq               string
+	Filename              string
+	ObjectKey             string
+	PreviewObjectKey      string
+	Kind                  extraction.AttachmentKind
 }
 
 type ApplicationNoticeInput struct {
@@ -60,7 +65,7 @@ type DiscoverySeenCacheInput struct {
 	ExpiresAt     time.Time
 	PolicyVersion string
 	ParserVersion string
-	Evidence       map[string]any
+	Evidence      map[string]any
 }
 
 type OfferingView struct {
@@ -113,10 +118,61 @@ type SourceNoticeView struct {
 	SourceURL  string `json:"source_url"`
 }
 
+type ScheduleView struct {
+	ID           int64  `json:"id"`
+	NoticeID     int64  `json:"notice_id"`
+	ScheduleType string `json:"schedule_type"`
+	Label        string `json:"label"`
+	StartsAt     string `json:"starts_at"`
+	EndsAt       string `json:"ends_at"`
+	DateText     string `json:"date_text"`
+	Channel      string `json:"channel"`
+	Note         string `json:"note"`
+	SourceText   string `json:"source_text"`
+	SourceSpan   string `json:"source_span"`
+}
+
 type QASummary struct {
 	Approved int64
 	Rejected int64
 	Pending  int64
+}
+
+type LLMRepairArtifact struct {
+	ID               int64
+	NoticeID         int64
+	AttachmentID     int64
+	ArtifactType     string
+	SchemaVersion    string
+	SourceSpan       string
+	RawText          string
+	ContentJSON      []byte
+	Confidence       float64
+	NoticeSeq        string
+	NoticeTitle      string
+	OriginalFilename string
+}
+
+func (a LLMRepairArtifact) ValidateLLMRepairOfferingTarget() error {
+	if a.NoticeID <= 0 || a.AttachmentID <= 0 {
+		return fmt.Errorf("LLM repair offering persistence requires an attachment-backed artifact")
+	}
+	return nil
+}
+
+func (a LLMRepairArtifact) LLMRepairAttachmentRef() (PersistedAttachment, error) {
+	if err := a.ValidateLLMRepairOfferingTarget(); err != nil {
+		return PersistedAttachment{}, err
+	}
+	return PersistedAttachment{
+		NoticeID:     a.NoticeID,
+		AttachmentID: a.AttachmentID,
+		Filename:     a.OriginalFilename,
+	}, nil
+}
+
+func PrepareLLMRepairOfferings(output llm.RepairOutput) []normalize.OfferingCandidate {
+	return normalize.OfferingsFromLLMRepairOutput(output)
 }
 
 type CollectionRunStatus string
@@ -372,6 +428,24 @@ func (r *Repository) SaveCandidatePreservation(ctx context.Context, board discov
 		if err != nil {
 			return nil, err
 		}
+		var previewStoredID int64
+		var previewObjectKey string
+		if object.PreviewStoredObject != nil {
+			previewStoredID, err = r.queries.UpsertStoredObject(ctx, db.UpsertStoredObjectParams{
+				Bucket:           "hic-artifacts",
+				ObjectKey:        object.PreviewStoredObject.Key,
+				StorageBackend:   "local_filesystem",
+				ContentType:      object.PreviewStoredObject.ContentType,
+				OriginalFilename: object.PreviewStoredObject.OriginalName,
+				Sha256:           object.PreviewStoredObject.SHA256,
+				SizeBytes:        object.PreviewStoredObject.SizeBytes,
+				Metadata:         mustJSON(object.PreviewStoredObject.Metadata),
+			})
+			if err != nil {
+				return nil, err
+			}
+			previewObjectKey = object.PreviewStoredObject.Key
+		}
 
 		attachment := byFileSeq[object.FileSeq]
 		attachmentID, err := r.queries.UpsertAttachment(ctx, db.UpsertAttachmentParams{
@@ -399,12 +473,15 @@ func (r *Repository) SaveCandidatePreservation(ctx context.Context, board discov
 			return nil, err
 		}
 		persisted = append(persisted, PersistedAttachment{
-			NoticeID:       noticeID,
-			StoredObjectID: storedID,
-			AttachmentID:   attachmentID,
-			FileSeq:        object.FileSeq,
-			ObjectKey:      object.StoredObject.Key,
-			Kind:           object.Kind,
+			NoticeID:              noticeID,
+			StoredObjectID:        storedID,
+			AttachmentID:          attachmentID,
+			PreviewStoredObjectID: previewStoredID,
+			FileSeq:               object.FileSeq,
+			Filename:              object.Filename,
+			ObjectKey:             object.StoredObject.Key,
+			PreviewObjectKey:      previewObjectKey,
+			Kind:                  object.Kind,
 		})
 	}
 
@@ -486,6 +563,287 @@ func (r *Repository) UpsertOffering(ctx context.Context, attachment PersistedAtt
 	})
 }
 
+func (r *Repository) SaveMyHomeNotice(ctx context.Context, endpoint lhdiscovery.MyHomeEndpoint, item lhdiscovery.MyHomeNoticeItem) (int64, error) {
+	boardKind := myHomeBoardKind(endpoint)
+	boardID, err := r.queries.UpsertSourceBoard(ctx, db.UpsertSourceBoardParams{
+		Agency:    firstNonEmpty(item.Agency, "LH"),
+		BoardKind: boardKind,
+		Name:      myHomeBoardName(endpoint),
+		SourceUrl: "https://apis.data.go.kr/1613000/HWSPR02/" + string(endpoint),
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return r.queries.UpsertSourceNotice(ctx, db.UpsertSourceNoticeParams{
+		SourceBoardID: int8Value(boardID),
+		Agency:        firstNonEmpty(item.Agency, "LH"),
+		BoardKind:     boardKind,
+		Seq:           item.SourceSeq(),
+		Category:      string(discovery.NoticeCategoryRecruitment),
+		NoticeType:    "recruitment",
+		NoticeSubtype: "",
+		Title:         item.Title,
+		PostedAt:      dateValue(parseYYYYMMDDDate(item.PostedDate)),
+		SourceUrl:     firstNonEmpty(item.DetailURL, item.SourceURL),
+		BodyText:      "",
+	})
+}
+
+func (r *Repository) InsertMyHomeArtifact(ctx context.Context, endpoint lhdiscovery.MyHomeEndpoint, item lhdiscovery.MyHomeNoticeItem) (int64, string, error) {
+	sourceSpan := lhdiscovery.MyHomeSourceSpan(endpoint, item)
+	content, err := json.Marshal(item.Raw)
+	if err != nil {
+		return 0, "", err
+	}
+	var id int64
+	err = r.pool.QueryRow(ctx, `
+insert into extracted_artifacts (
+	artifact_type,
+	extractor,
+	status,
+	schema_version,
+	raw_text,
+	content_json,
+	source_span,
+	confidence
+)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
+on conflict (artifact_type, source_span)
+where attachment_id is null and source_span <> ''
+do update set
+	extractor = excluded.extractor,
+	status = excluded.status,
+	schema_version = excluded.schema_version,
+	raw_text = excluded.raw_text,
+	content_json = excluded.content_json,
+	confidence = excluded.confidence
+returning id
+`,
+		string(extraction.ArtifactTypeMyHomeAPIItem),
+		"myhome-openapi",
+		string(extraction.ArtifactStatusExtracted),
+		"v1",
+		item.Title,
+		content,
+		sourceSpan,
+		numericValue(1),
+	).Scan(&id)
+	return id, sourceSpan, err
+}
+
+func (r *Repository) UpsertMyHomeOffering(ctx context.Context, noticeID int64, sourceArtifactID int64, agency string, offering normalize.OfferingCandidate) (int64, error) {
+	var id int64
+	err := r.pool.QueryRow(ctx, `
+insert into offerings (
+	notice_id,
+	source_artifact_id,
+	agency,
+	source,
+	application_unit_label,
+	supply_method,
+	application_category,
+	supply_category,
+	list_no,
+	district,
+	address,
+	legal_dong,
+	address_detail,
+	housing_name,
+	complex_name,
+	building_name,
+	unit_no,
+	floor,
+	floor_no,
+	unit_type,
+	structure_type,
+	exclusive_area_m2,
+	area_pyeong,
+	deposit_text,
+	deposit_krw,
+	jeonse_deposit_text,
+	jeonse_deposit_krw,
+	contract_deposit_krw,
+	balance_payment_krw,
+	monthly_rent_text,
+	monthly_rent_krw,
+	supply_count,
+	reserved_count,
+	gender_requirement,
+	occupancy_type,
+	capacity_persons,
+	dormitory_fee_krw,
+	heating_method,
+	move_in_start_text,
+	direction,
+	status,
+	source_sheet,
+	source_row,
+	source_cell,
+	source_page,
+	source_span,
+	raw_row,
+	confidence,
+	qa_status
+)
+values (
+	$1, $2, $3, 'myhome', $4, $5, $6, $7, $8, $9,
+	$10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+	$20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
+	$30, $31, $32, $33, $34, $35, $36, $37, $38, $39,
+	$40, $41, $42, $43, $44, $45, $46, $47, $48
+)
+on conflict (notice_id, source_span)
+where attachment_id is null and source_span <> ''
+do update set
+	source_artifact_id = excluded.source_artifact_id,
+	agency = excluded.agency,
+	application_unit_label = excluded.application_unit_label,
+	supply_method = excluded.supply_method,
+	application_category = excluded.application_category,
+	supply_category = excluded.supply_category,
+	list_no = excluded.list_no,
+	district = excluded.district,
+	address = excluded.address,
+	legal_dong = excluded.legal_dong,
+	address_detail = excluded.address_detail,
+	housing_name = excluded.housing_name,
+	complex_name = excluded.complex_name,
+	building_name = excluded.building_name,
+	unit_no = excluded.unit_no,
+	floor = excluded.floor,
+	floor_no = excluded.floor_no,
+	unit_type = excluded.unit_type,
+	structure_type = excluded.structure_type,
+	exclusive_area_m2 = excluded.exclusive_area_m2,
+	area_pyeong = excluded.area_pyeong,
+	deposit_text = excluded.deposit_text,
+	deposit_krw = excluded.deposit_krw,
+	jeonse_deposit_text = excluded.jeonse_deposit_text,
+	jeonse_deposit_krw = excluded.jeonse_deposit_krw,
+	contract_deposit_krw = excluded.contract_deposit_krw,
+	balance_payment_krw = excluded.balance_payment_krw,
+	monthly_rent_text = excluded.monthly_rent_text,
+	monthly_rent_krw = excluded.monthly_rent_krw,
+	supply_count = excluded.supply_count,
+	reserved_count = excluded.reserved_count,
+	gender_requirement = excluded.gender_requirement,
+	occupancy_type = excluded.occupancy_type,
+	capacity_persons = excluded.capacity_persons,
+	dormitory_fee_krw = excluded.dormitory_fee_krw,
+	heating_method = excluded.heating_method,
+	move_in_start_text = excluded.move_in_start_text,
+	direction = excluded.direction,
+	status = excluded.status,
+	source_sheet = excluded.source_sheet,
+	source_row = excluded.source_row,
+	source_cell = excluded.source_cell,
+	source_page = excluded.source_page,
+	raw_row = excluded.raw_row,
+	confidence = excluded.confidence,
+	qa_status = case when offerings.qa_status = 'approved' then 'approved' else excluded.qa_status end
+returning id
+`,
+		int8Value(noticeID),
+		int8Value(sourceArtifactID),
+		firstNonEmpty(agency, "LH"),
+		offering.ApplicationUnitLabel,
+		offering.SupplyMethod,
+		offering.ApplicationCategory,
+		offering.SupplyCategory,
+		offering.ListNo,
+		offering.District,
+		offering.Address,
+		offering.LegalDong,
+		offering.AddressDetail,
+		offering.HousingName,
+		offering.ComplexName,
+		offering.BuildingName,
+		stringValue(offering.UnitNo),
+		int4PtrValue(offering.FloorNo),
+		int4PtrValue(offering.FloorNo),
+		offering.UnitType,
+		offering.StructureType,
+		numericPtrValue(offering.ExclusiveAreaM2),
+		numericPtrValue(offering.AreaPyeong),
+		offering.DepositText,
+		int8PtrValue(offering.DepositKRW),
+		offering.JeonseDepositText,
+		int8PtrValue(offering.JeonseDepositKRW),
+		int8PtrValue(offering.ContractDepositKRW),
+		int8PtrValue(offering.BalancePaymentKRW),
+		offering.MonthlyRentText,
+		int8PtrValue(offering.MonthlyRentKRW),
+		int4PtrValue(offering.SupplyCount),
+		int4PtrValue(offering.ReservedCount),
+		offering.GenderRequirement,
+		offering.OccupancyType,
+		int4PtrValue(offering.CapacityPersons),
+		int8PtrValue(offering.DormitoryFeeKRW),
+		offering.HeatingMethod,
+		offering.MoveInStartText,
+		offering.Direction,
+		offering.Status,
+		offering.SourceSheet,
+		int4Value(offering.SourceRow),
+		offering.SourceCell,
+		int4Value(offering.SourcePage),
+		offering.SourceSpan,
+		mustJSONAny(offering.RawRow),
+		numericValue(offering.Confidence),
+		"pending",
+	).Scan(&id)
+	return id, err
+}
+
+func (r *Repository) UpsertNoticeSchedule(ctx context.Context, schedule normalize.NoticeScheduleCandidate) (int64, error) {
+	var id int64
+	err := r.pool.QueryRow(ctx, `
+insert into notice_schedules (
+	notice_id,
+	source_artifact_id,
+	schedule_type,
+	label,
+	starts_at,
+	ends_at,
+	date_text,
+	channel,
+	note,
+	source_text,
+	source_span,
+	confidence
+)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+on conflict (notice_id, schedule_type, source_span)
+where source_span <> ''
+do update set
+	source_artifact_id = excluded.source_artifact_id,
+	label = excluded.label,
+	starts_at = excluded.starts_at,
+	ends_at = excluded.ends_at,
+	date_text = excluded.date_text,
+	channel = excluded.channel,
+	note = excluded.note,
+	source_text = excluded.source_text,
+	confidence = excluded.confidence
+returning id
+`,
+		schedule.NoticeID,
+		int8Value(schedule.SourceArtifactID),
+		schedule.ScheduleType,
+		schedule.Label,
+		timestamptzValue(schedule.StartsAt),
+		timestamptzValue(schedule.EndsAt),
+		schedule.DateText,
+		schedule.Channel,
+		schedule.Note,
+		schedule.SourceText,
+		schedule.SourceSpan,
+		numericValue(schedule.Confidence),
+	).Scan(&id)
+	return id, err
+}
+
 func (r *Repository) Counts(ctx context.Context) (storedObjects int64, artifacts int64, err error) {
 	storedObjects, err = r.queries.CountStoredObjects(ctx)
 	if err != nil {
@@ -497,6 +855,197 @@ func (r *Repository) Counts(ctx context.Context) (storedObjects int64, artifacts
 
 func (r *Repository) CountOfferings(ctx context.Context) (int64, error) {
 	return r.queries.CountOfferings(ctx)
+}
+
+func (r *Repository) GetLLMRepairArtifact(ctx context.Context, artifactID int64) (LLMRepairArtifact, error) {
+	row := r.pool.QueryRow(ctx, `
+select
+	ea.id,
+	coalesce(a.notice_id, 0),
+	coalesce(ea.attachment_id, 0),
+	ea.artifact_type,
+	ea.schema_version,
+	ea.source_span,
+	ea.raw_text,
+	ea.content_json,
+	ea.confidence,
+	coalesce(sn.seq, ''),
+	coalesce(sn.title, ''),
+	coalesce(a.original_filename, '')
+from extracted_artifacts ea
+left join attachments a on a.id = ea.attachment_id
+left join source_notices sn on sn.id = a.notice_id
+where ea.id = $1
+`, artifactID)
+
+	var artifact LLMRepairArtifact
+	var confidence pgtype.Numeric
+	if err := row.Scan(
+		&artifact.ID,
+		&artifact.NoticeID,
+		&artifact.AttachmentID,
+		&artifact.ArtifactType,
+		&artifact.SchemaVersion,
+		&artifact.SourceSpan,
+		&artifact.RawText,
+		&artifact.ContentJSON,
+		&confidence,
+		&artifact.NoticeSeq,
+		&artifact.NoticeTitle,
+		&artifact.OriginalFilename,
+	); err != nil {
+		return LLMRepairArtifact{}, err
+	}
+	if value := numericToFloat64Ptr(confidence); value != nil {
+		artifact.Confidence = *value
+	}
+	return artifact, nil
+}
+
+func (r *Repository) ListLLMRepairCandidates(ctx context.Context, limit int32, includeApprovedNotices bool) ([]LLMRepairArtifact, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 20
+	}
+	rows, err := r.pool.Query(ctx, `
+select
+	ea.id,
+	coalesce(a.notice_id, 0),
+	coalesce(ea.attachment_id, 0),
+	ea.artifact_type,
+	ea.schema_version,
+	ea.source_span,
+	ea.raw_text,
+	ea.content_json,
+	ea.confidence,
+	coalesce(sn.seq, ''),
+	coalesce(sn.title, ''),
+	coalesce(a.original_filename, '')
+from extracted_artifacts ea
+join attachments a on a.id = ea.attachment_id
+join source_notices sn on sn.id = a.notice_id
+where sn.category = 'recruitment'
+	and ea.status = 'extracted'
+	and ea.source_span like 'object://%'
+	and trim(ea.raw_text) <> ''
+	and ea.artifact_type in ('pdf_text', 'html_preview', 'hwp_text', 'hwpx_text')
+	and a.attachment_kind in ('notice_pdf', 'notice_hwp')
+	and not exists (
+		select 1
+		from offerings o
+		where o.source_artifact_id = ea.id
+	)
+	and not exists (
+		select 1
+		from llm_repair_attempts attempt
+		where attempt.artifact_id = ea.id
+			and attempt.status = 'succeeded'
+	)
+	and (
+		$2::boolean
+		or not exists (
+			select 1
+			from offerings approved
+			where approved.notice_id = sn.id
+				and approved.qa_status = 'approved'
+		)
+	)
+order by
+	case when exists (
+		select 1
+		from offerings approved
+		where approved.notice_id = sn.id
+			and approved.qa_status = 'approved'
+	) then 1 else 0 end,
+	case ea.artifact_type when 'pdf_text' then 0 else 1 end,
+	length(ea.raw_text) desc,
+	ea.id
+limit $1
+`, limit, includeApprovedNotices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var candidates []LLMRepairArtifact
+	for rows.Next() {
+		var artifact LLMRepairArtifact
+		var confidence pgtype.Numeric
+		if err := rows.Scan(
+			&artifact.ID,
+			&artifact.NoticeID,
+			&artifact.AttachmentID,
+			&artifact.ArtifactType,
+			&artifact.SchemaVersion,
+			&artifact.SourceSpan,
+			&artifact.RawText,
+			&artifact.ContentJSON,
+			&confidence,
+			&artifact.NoticeSeq,
+			&artifact.NoticeTitle,
+			&artifact.OriginalFilename,
+		); err != nil {
+			return nil, err
+		}
+		if value := numericToFloat64Ptr(confidence); value != nil {
+			artifact.Confidence = *value
+		}
+		candidates = append(candidates, artifact)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return candidates, nil
+}
+
+func (r *Repository) InsertLLMRepairAttempt(ctx context.Context, attempt llm.AttemptRecord) (int64, error) {
+	var id int64
+	err := r.pool.QueryRow(ctx, `
+insert into llm_repair_attempts (
+	artifact_id,
+	schema_version,
+	prompt_version,
+	model,
+	input_hash,
+	output_hash,
+	status,
+	confidence,
+	source_span,
+	request_json,
+	response_json,
+	error_text
+)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+returning id
+`,
+		attempt.ArtifactID,
+		attempt.SchemaVersion,
+		attempt.PromptVersion,
+		attempt.Model,
+		attempt.InputHash,
+		attempt.OutputHash,
+		attempt.Status,
+		numericValue(attempt.Confidence),
+		attempt.SourceSpan,
+		jsonBytesOrEmpty(attempt.RequestJSON),
+		jsonBytesOrEmpty(attempt.ResponseJSON),
+		attempt.ErrorText,
+	).Scan(&id)
+	return id, err
+}
+
+func (r *Repository) CountLLMRepairAttempts(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.pool.QueryRow(ctx, `select count(*) from llm_repair_attempts`).Scan(&count)
+	return count, err
+}
+
+func (r *Repository) DeleteLLMRepairOfferings(ctx context.Context, sourceArtifactID int64) error {
+	_, err := r.pool.Exec(ctx, `
+delete from offerings
+where source_artifact_id = $1
+	and raw_row->>'source' = 'llm_repair'
+`, sourceArtifactID)
+	return err
 }
 
 func (r *Repository) ExistingNoticeSeqs(ctx context.Context, agency string, boardKind string) (map[string]bool, error) {
@@ -622,6 +1171,68 @@ func (r *Repository) ListSourceNotices(ctx context.Context, limit int32) ([]Sour
 	return notices, nil
 }
 
+func (r *Repository) ListSchedules(ctx context.Context, limit int32) ([]ScheduleView, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	rows, err := r.pool.Query(ctx, `
+select
+	ns.id,
+	ns.notice_id,
+	ns.schedule_type,
+	ns.label,
+	ns.starts_at,
+	ns.ends_at,
+	ns.date_text,
+	ns.channel,
+	ns.note,
+	ns.source_text,
+	ns.source_span
+from notice_schedules ns
+where exists (
+	select 1
+	from offerings o
+	where o.notice_id = ns.notice_id
+		and o.qa_status = 'approved'
+)
+order by ns.starts_at nulls last, ns.id
+limit $1
+`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var schedules []ScheduleView
+	for rows.Next() {
+		var schedule ScheduleView
+		var startsAt pgtype.Timestamptz
+		var endsAt pgtype.Timestamptz
+		if err := rows.Scan(
+			&schedule.ID,
+			&schedule.NoticeID,
+			&schedule.ScheduleType,
+			&schedule.Label,
+			&startsAt,
+			&endsAt,
+			&schedule.DateText,
+			&schedule.Channel,
+			&schedule.Note,
+			&schedule.SourceText,
+			&schedule.SourceSpan,
+		); err != nil {
+			return nil, err
+		}
+		schedule.StartsAt = timestamptzToString(startsAt)
+		schedule.EndsAt = timestamptzToString(endsAt)
+		schedules = append(schedules, schedule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return schedules, nil
+}
+
 func int8Value(value int64) pgtype.Int8 {
 	return pgtype.Int8{Int64: value, Valid: true}
 }
@@ -697,6 +1308,13 @@ func dateToString(value pgtype.Date) string {
 	return value.Time.Format(time.DateOnly)
 }
 
+func timestamptzToString(value pgtype.Timestamptz) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.Time.Format(time.RFC3339)
+}
+
 func numericValue(value float64) pgtype.Numeric {
 	var numeric pgtype.Numeric
 	if err := numeric.Scan(fmt.Sprintf("%f", value)); err != nil {
@@ -727,6 +1345,13 @@ func mustJSONAny(value map[string]any) []byte {
 	return out
 }
 
+func jsonBytesOrEmpty(value []byte) []byte {
+	if len(value) == 0 {
+		return []byte("{}")
+	}
+	return value
+}
+
 func stringValue(value string) pgtype.Text {
 	if strings.TrimSpace(value) == "" {
 		return pgtype.Text{}
@@ -748,4 +1373,34 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func parseYYYYMMDDDate(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if len(value) != 8 {
+		return time.Time{}
+	}
+	parsed, err := time.ParseInLocation("20060102", value, time.Local)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func myHomeBoardKind(endpoint lhdiscovery.MyHomeEndpoint) string {
+	switch endpoint {
+	case lhdiscovery.MyHomeSale:
+		return "myhome_sale"
+	default:
+		return "myhome_rental"
+	}
+}
+
+func myHomeBoardName(endpoint lhdiscovery.MyHomeEndpoint) string {
+	switch endpoint {
+	case lhdiscovery.MyHomeSale:
+		return "마이홈 공공분양주택 모집공고"
+	default:
+		return "마이홈 공공임대주택 모집공고"
+	}
 }

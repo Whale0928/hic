@@ -2,6 +2,7 @@ package extraction
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -9,6 +10,10 @@ import (
 )
 
 func ExtractXLSXRows(path string) ([]ExtractedArtifact, error) {
+	return ExtractXLSXRowsWithSource(path, "")
+}
+
+func ExtractXLSXRowsWithSource(path string, sourceSpan string) ([]ExtractedArtifact, error) {
 	f, err := excelize.OpenFile(filepath.Clean(path))
 	if err != nil {
 		return nil, fmt.Errorf("open xlsx: %w", err)
@@ -39,7 +44,7 @@ func ExtractXLSXRows(path string) ([]ExtractedArtifact, error) {
 				SchemaVersion: "v1",
 				SourceSheet:   sheet,
 				SourceRow:     rowNumber,
-				SourceSpan:    fmt.Sprintf("xlsx://%s!%d", sheet, rowNumber),
+				SourceSpan:    xlsxSourceSpan(sourceSpan, sheet, rowNumber),
 				Content: map[string]any{
 					"cells": cells,
 				},
@@ -52,6 +57,14 @@ func ExtractXLSXRows(path string) ([]ExtractedArtifact, error) {
 	}
 
 	return artifacts, nil
+}
+
+func xlsxSourceSpan(sourceSpan string, sheet string, rowNumber int) string {
+	sourceSpan = strings.TrimSpace(sourceSpan)
+	if sourceSpan == "" {
+		return fmt.Sprintf("xlsx://%s!%d", sheet, rowNumber)
+	}
+	return fmt.Sprintf("%s#sheet=%s&row=%d", sourceSpan, url.QueryEscape(sheet), rowNumber)
 }
 
 func normalizeCells(cells []string) []string {

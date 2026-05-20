@@ -1,6 +1,6 @@
 # House Information Collector AI Handoff
 
-Last updated: 2026-05-14
+Last updated: 2026-05-20
 
 This document is written for a future AI session that needs to continue the `집 모아 / House Information Collector` project without losing context.
 
@@ -8,7 +8,7 @@ This document is written for a future AI session that needs to continue the `집
 
 House Information Collector, short name `HIC`, is a Go-based data collection and normalization system for public housing recruitment notices.
 
-The first target agency is SH. LH is a planned future target. The user wants a system that can discover public housing recruitment notices, preserve original source files, extract data from large attachments, normalize individual housing-unit records, and store the result in PostgreSQL.
+The active targets are SH and LH/MyHome. The user wants a system that can discover public housing recruitment notices, preserve original source files, extract data from large attachments, normalize application-selectable Offering records, and store the result in PostgreSQL.
 
 The project is not primarily a generic crawler. It is a structured evidence-preserving data pipeline for public housing recruitment information.
 
@@ -84,7 +84,58 @@ Archived historical documents are in:
 
 Archived documents may contain useful evidence from exploration, but they are not current architecture.
 
-## 6. Current Prototype Code
+## 6. Current Implementation Snapshot
+
+Current active implementation is under `pkg/<domain>`, with `schema/schema.sql` as the PostgreSQL schema source.
+
+Implemented and verified in the 2026-05-20 session:
+
+- SH rental discovery rejects non-recruitment posts before persistence.
+- SH attachment preservation stores originals under stable object keys and HTML previews under `hic-artifacts`.
+- Extraction supports PDF text/table rows, XLSX rows, HTML preview text, HWPX text, and HWP external-tool extraction with `hwp_unsupported` fallback.
+- SH artifact source spans for preserved objects use `object://...`; QA-approved serving records reject legacy local path spans such as `pdf://.data/...`.
+- LH/MyHome collection is independent from SH and supports rental/sale endpoints:
+  - `rsdtRcritNtcList`
+  - `ltRsdtRcritNtcList`
+- LH/MyHome fields are normalized to offerings and application schedules.
+- `unit_no` remains nullable; grouped MyHome offerings and grouped LLM/PDF offerings can be approved when they have a valid application label/source evidence and supply count or another application unit discriminator.
+- LLM repair has:
+  - JSON schema constrained response parsing.
+  - prompt/schema/model/input hash attempt records.
+  - global max-attempt guard capped at 1500.
+  - `llm candidates` default policy that excludes notices already having QA-approved offerings.
+  - successful repair output upserted into pending `offerings`, then promoted by QA.
+- Serving/API defaults:
+  - `/offerings` returns QA-approved offerings only unless `qa_status` is explicitly provided.
+  - `/schedules` returns schedules only for notices with approved offerings.
+
+Fresh verification snapshot:
+
+```text
+go test ./...: pass
+llm_candidates default: 0
+offerings: 452 total
+approved serving offerings: 356
+myhome approved/rejected: 336 / 56
+sh approved/rejected: 20 / 40
+approved legacy local path source_span: 0
+llm_repair_attempts: 2
+```
+
+Important CLI examples:
+
+```bash
+go run . workflow collect-sh --board rental --pages 1 --dry-run=false --preserve-attachments --max-age-days 0 --skip-existing=false --object-root .data/objects-check
+go run . workflow collect-lh --kind rental --num-rows 200 --all-pages --dry-run=false --agency-filter LH
+go run . workflow collect-lh --kind sale --num-rows 200 --all-pages --dry-run=false --agency-filter LH
+go run . llm candidates --limit 20
+go run . llm candidates --limit 20 --include-approved-notices
+go run . llm repair --artifact-id 48 --dry-run=false --max-input-chars 20000 --max-attempts 1500
+go run . qa promote-offerings
+go run . serve
+```
+
+## 7. Historical Prototype Code
 
 Existing code is exploratory and should be treated as prototype evidence, not the final target.
 
@@ -122,7 +173,7 @@ This prototype proves feasibility, but it violates the target architecture in se
 - normalized unit model is incomplete
 - Redis/MinIO optional-port strategy is not implemented
 
-## 7. Known SH Site Findings
+## 8. Known SH Site Findings
 
 These findings came from prior direct exploration and prototype code. Re-verify them before making production-grade assumptions because public websites can change.
 
@@ -179,7 +230,7 @@ Known SH house information JSON candidates from old research:
 
 The SH sale board was discussed as important, but the final stable endpoint still needs to be re-verified in a fresh site analysis pass.
 
-## 8. Evidence From Prior Collection Experiment
+## 9. Evidence From Prior Collection Experiment
 
 Historical experiment results from archived docs:
 
@@ -248,7 +299,7 @@ Important lesson:
 
 Applicant/winner spreadsheets can contain personal-information headers such as `접수번호`, `성명`, `생월일`. These must not become housing-unit records.
 
-## 9. Data That Must Be Normalized
+## 10. Data That Must Be Normalized
 
 Do not leave the following only in raw JSON.
 
@@ -333,7 +384,7 @@ source_page
 confidence
 ```
 
-## 10. Target Architecture
+## 11. Target Architecture
 
 Layer order:
 
@@ -376,7 +427,7 @@ Site Registry
 
 Redis and MinIO should never be direct dependencies of discovery, extraction, normalize, LLM, or QA domain logic.
 
-## 11. Target Commands
+## 12. Target Commands
 
 Expected Cobra command direction:
 
@@ -395,7 +446,7 @@ hic qa sample --case youth-rent-2025
 
 Each domain command should validate only its own layer responsibility.
 
-## 12. LLM Strategy
+## 13. LLM Strategy
 
 LLM normalization is useful but should be constrained.
 
@@ -416,7 +467,7 @@ Do not use LLM for:
 
 Every LLM result must be validated against JSON Schema and must cite source spans.
 
-## 13. Strong QA Rules
+## 14. Strong QA Rules
 
 Discovery QA:
 
@@ -448,7 +499,7 @@ Serving QA:
 
 - Only QA-approved normalized records should be visible in API/dashboard serving models.
 
-## 14. Recommended First Move In A New Session
+## 15. Recommended First Move In A New Session
 
 If asked to continue implementation, do this order:
 
@@ -469,7 +520,7 @@ pkg/
 7. Add ports/interfaces before Redis/MinIO adapters.
 8. Build domain commands with tests/fixtures one layer at a time.
 
-## 15. Do Not Forget
+## 16. Do Not Forget
 
 - The user was unhappy with raw JSON being used as the main data shape.
 - Individual unit-level data in attachments is the core business value.
@@ -478,4 +529,3 @@ pkg/
 - SH sale board is important and should be added after rental board is stable.
 - LH support should be a new site adapter, not a forked pipeline.
 - Avoid hardcoded one-off parsing. Use registry/profile/fallback design.
-

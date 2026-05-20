@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"hic/pkg/discovery"
+	"hic/pkg/llm"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,6 +44,68 @@ func TestValidatePersistableCandidate_당첨자발표는저장전차단한다(t 
 	}
 }
 
+func TestLLMRepairArtifactRef_첨부기반Artifact만저장대상으로허용한다(t *testing.T) {
+	artifact := LLMRepairArtifact{ID: 10, NoticeID: 20, AttachmentID: 30}
+
+	ref, err := artifact.LLMRepairAttachmentRef()
+	if err != nil {
+		t.Fatalf("LLMRepairAttachmentRef() error = %v", err)
+	}
+
+	if ref.NoticeID != 20 || ref.AttachmentID != 30 {
+		t.Fatalf("ref = %+v", ref)
+	}
+}
+
+func TestLLMRepairArtifactRef_첨부없는Artifact는차단한다(t *testing.T) {
+	artifact := LLMRepairArtifact{ID: 10, NoticeID: 20}
+
+	err := artifact.ValidateLLMRepairOfferingTarget()
+
+	if err == nil {
+		t.Fatal("ValidateLLMRepairOfferingTarget() error = nil")
+	}
+	if !strings.Contains(err.Error(), "attachment-backed") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestPrepareLLMRepairOfferings_성공출력을저장할후보로변환한다(t *testing.T) {
+	count := 15
+	output := llm.RepairOutput{
+		Offerings: []llm.Offering{{
+			ApplicationUnitLabel: "청담르엘 49 일반",
+			HousingName:          "청담르엘",
+			SupplyCount:          &count,
+			SourceSpan:           "object://hic-originals/sh/304271/13-pamphlet.pdf#page=5&row=2",
+			Confidence:           0.8,
+		}},
+	}
+
+	offerings := PrepareLLMRepairOfferings(output)
+
+	if len(offerings) != 1 {
+		t.Fatalf("len(offerings) = %d, want 1", len(offerings))
+	}
+	if offerings[0].RawRow["source"] != "llm_repair" {
+		t.Fatalf("RawRow = %+v", offerings[0].RawRow)
+	}
+}
+
+func TestPrepareLLMRepairOfferings_빈근거후보는제외한다(t *testing.T) {
+	output := llm.RepairOutput{
+		Offerings: []llm.Offering{{
+			ApplicationUnitLabel: "근거 없음",
+			HousingName:          "테스트",
+		}},
+	}
+
+	offerings := PrepareLLMRepairOfferings(output)
+
+	if len(offerings) != 0 {
+		t.Fatalf("offerings = %+v", offerings)
+	}
+}
 
 func TestRepository_ApplicationNotice_테스트별클린DB에서UpsertLink한다(t *testing.T) {
 	repo := openCleanTestRepository(t)

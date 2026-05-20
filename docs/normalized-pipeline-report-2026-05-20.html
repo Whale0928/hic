@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HIC SH/LH 정제 수집 파이프라인 개선 보고서</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #5f6f7f;
+      --line: #d7dee7;
+      --paper: #ffffff;
+      --band: #f5f7fa;
+      --accent: #1f6feb;
+      --accent-soft: #e9f2ff;
+      --ok: #0f766e;
+      --warn: #9a6700;
+      --bad: #b42318;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: var(--band);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.62;
+    }
+    main {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 40px 0 56px;
+    }
+    header {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 28px 32px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 21px;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0 0 12px;
+    }
+    a {
+      color: var(--accent);
+    }
+    code {
+      padding: 2px 5px;
+      border: 1px solid #dbe4ee;
+      border-radius: 5px;
+      background: #f7f9fc;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    pre {
+      overflow-x: auto;
+      padding: 14px 16px;
+      border: 1px solid #dbe4ee;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #e5edf7;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px 28px;
+      margin-top: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 6px;
+      font-size: 14px;
+    }
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5ebf2;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #f7f9fc;
+      color: #344054;
+      font-weight: 700;
+    }
+    ul {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+    li {
+      margin: 5px 0;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 3px 10px;
+      border: 1px solid #c8d7ea;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: #174b87;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .metric {
+      border: 1px solid #dbe4ee;
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: #fbfdff;
+    }
+    .metric strong {
+      display: block;
+      font-size: 26px;
+      line-height: 1.15;
+      color: #102a43;
+    }
+    .metric span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .ok {
+      color: var(--ok);
+      font-weight: 700;
+    }
+    .warn {
+      color: var(--warn);
+      font-weight: 700;
+    }
+    .bad {
+      color: var(--bad);
+      font-weight: 700;
+    }
+    .note {
+      border-left: 4px solid var(--accent);
+      padding: 10px 12px;
+      background: #f6faff;
+      color: #2d4059;
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .step {
+      min-height: 72px;
+      border: 1px solid #cfd8e3;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fbfdff;
+      font-size: 13px;
+    }
+    .step b {
+      display: block;
+      margin-bottom: 4px;
+      color: #243b53;
+    }
+    @media (max-width: 840px) {
+      main {
+        width: min(100% - 24px, 1120px);
+        padding-top: 20px;
+      }
+      header,
+      section {
+        padding: 20px;
+      }
+      .status-grid,
+      .flow {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    @media (max-width: 560px) {
+      .status-grid,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>HIC SH/LH 정제 수집 파이프라인 개선 보고서</h1>
+      <p>
+        <strong>프로젝트:</strong> <code>/Users/hgkim/workspace/hic</code><br>
+        <strong>작성일:</strong> 2026-05-20<br>
+        <strong>작업 유형:</strong> 기능개발, 버그수정, 구조 개선
+      </p>
+      <div class="meta">
+        <span class="pill">Offering 중심 정규화</span>
+        <span class="pill">SH idempotency 수정</span>
+        <span class="pill">LH/MyHome 독립 수집</span>
+        <span class="pill">QA-approved 기본 노출</span>
+        <span class="pill">LLM repair 최대 1,500회</span>
+      </div>
+    </header>
+
+    <section>
+      <h2>1. 요약</h2>
+      <p>
+        SH와 LH 모두 최종 산출물을 공고 원문 덤프가 아니라 QA 가능한 정제 데이터로 수렴하도록 개선했다.
+        최종 저장 단위는 신청 가능한 단위인 <code>Offering</code>이며, 동호수가 공개되지 않는 모집 방식도 처리할 수 있도록
+        <code>unit_no</code>는 nullable 전제로 유지했다.
+      </p>
+      <div class="status-grid">
+        <div class="metric">
+          <strong>356</strong>
+          <span>QA-approved offerings</span>
+        </div>
+        <div class="metric">
+          <strong>393</strong>
+          <span>notice schedules</span>
+        </div>
+        <div class="metric">
+          <strong>0</strong>
+          <span>approved legacy local-path source spans</span>
+        </div>
+        <div class="metric">
+          <strong>0</strong>
+          <span>pending offerings after QA</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 배경</h2>
+      <ul>
+        <li>기존 SH 수집은 재수집 시 <code>source_span</code>에 로컬 object root 경로가 들어가 idempotency가 깨졌다.</li>
+        <li>동일 공고/첨부에서 approved 15건과 pending 15건이 같은 신청 단위로 중복되어 QA 승격 시 unique 충돌이 발생했다.</li>
+        <li>PDF 추출은 일부 하드코딩 패턴에 치우쳐 있었고, HTML/HWP/HWPX 첨부 및 미리보기 보존 흐름이 부족했다.</li>
+        <li>LH는 SH 게시판과 별개로 MyHome OpenAPI 기반의 독립 수집 경로가 필요했다.</li>
+        <li>Serving/API 기본 노출은 raw archive가 아니라 QA-approved normalized offerings만 대상으로 해야 했다.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. 목표 모델</h2>
+      <div class="flow">
+        <div class="step">
+          <b>원본 보존</b>
+          공고/첨부를 object storage 인터페이스로 저장
+        </div>
+        <div class="step">
+          <b>Artifact 추출</b>
+          PDF, XLSX, HTML, HWPX, HWP 기계 추출
+        </div>
+        <div class="step">
+          <b>정규화</b>
+          신청 가능한 단위인 Offering과 schedule 생성
+        </div>
+        <div class="step">
+          <b>LLM 보정</b>
+          deterministic parser 실패 구간만 repair
+        </div>
+        <div class="step">
+          <b>QA 승인</b>
+          approved 데이터만 serving/API 기본 노출
+        </div>
+      </div>
+      <p class="note">
+        <code>source_span</code>은 <code>object://...</code> 또는 <code>myhome://...</code> 같은 논리 원천 식별자를 사용한다.
+        <code>.data/...</code> 등 로컬 경로 기반 span은 QA-approved로 승격하지 않는다.
+      </p>
+    </section>
+
+    <section>
+      <h2>4. 구현 내역</h2>
+      <h3>SH 파이프라인</h3>
+      <ul>
+        <li>첨부 원본과 preview HTML을 보존하고, 추출 artifact의 source span을 object key 기반으로 안정화했다.</li>
+        <li>공급 주택 팸플릿처럼 파일명만으로 누락되던 공급 정보성 PDF를 <code>notice_pdf</code> 계열로 분류하도록 보강했다.</li>
+        <li>PDF/XLSX artifact 재처리 시 같은 입력에서 중복 offering이 승인되지 않도록 QA와 upsert 기준을 정리했다.</li>
+        <li>SH 본문/첨부에서 신청기간을 schedule 테이블로 구조화하는 경로를 추가했다.</li>
+      </ul>
+
+      <h3>LH/MyHome 파이프라인</h3>
+      <ul>
+        <li><code>rsdtRcritNtcList</code>와 <code>ltRsdtRcritNtcList</code>를 사용하는 독립 수집 명령을 추가했다.</li>
+        <li><code>pblancId</code>, <code>suplyInsttNm</code>, <code>suplyTyNm</code>, <code>fullAdres</code>, <code>hsmpNm</code>, <code>sumSuplyCo</code>, <code>rentGtn</code>, <code>mtRntchrg</code>, <code>beginDe</code>, <code>endDe</code>를 offerings/schedules에 매핑했다.</li>
+        <li>기관 필터는 응답 필드 <code>suplyInsttNm</code> 기준으로 클라이언트에서 적용한다.</li>
+        <li>최신 공개 수집 경로는 공공데이터포털 MyHome 모집공고 API를 주 경로로, MyHome 단지정보/예비입주자 API를 보조 경로로 정리했다.</li>
+      </ul>
+
+      <h3>추출 및 LLM</h3>
+      <ul>
+        <li>HTML preview, HWPX zip/xml text, HWP 외부 도구 기반 추출 및 <code>hwp_unsupported</code> fallback을 추가했다.</li>
+        <li>LLM repair는 <code>.env</code> 키를 사용하고, 전체 시도 횟수는 최대 1,500회로 제한했다.</li>
+        <li>LLM 결과가 한 artifact에서 여러 offering을 생성할 때 <code>#llm_item=N</code> suffix로 source span 충돌을 방지했다.</li>
+        <li><code>llm candidates</code> 기본 조회는 이미 approved offering이 있는 공고를 제외한다.</li>
+      </ul>
+
+      <h3>API/QA</h3>
+      <ul>
+        <li><code>/offerings</code> 기본 응답은 <code>qa_status=approved</code>만 반환한다.</li>
+        <li><code>/schedules</code> API를 추가하고, approved offering이 있는 공고의 일정만 노출한다.</li>
+        <li>QA 승격은 pending뿐 아니라 전체 record를 다시 평가해 stale approved 상태를 남기지 않도록 했다.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>5. 주요 변경 파일</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>영역</th>
+            <th>파일</th>
+            <th>내용</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>CLI/Workflow</td>
+            <td><code>pkg/cli/root.go</code>, <code>pkg/workflow/collect.go</code>, <code>pkg/workflow/extract.go</code></td>
+            <td>SH/LH collect, extract, LLM, QA 명령 연결</td>
+          </tr>
+          <tr>
+            <td>Discovery</td>
+            <td><code>pkg/discovery/myhome.go</code>, <code>pkg/discovery/myhome_options.go</code>, <code>pkg/discovery/policy.go</code></td>
+            <td>MyHome API 수집, 필터, 재시도, 모집공고 정책</td>
+          </tr>
+          <tr>
+            <td>Extraction</td>
+            <td><code>pkg/extraction/*.go</code></td>
+            <td>PDF/XLSX/HTML/HWPX/HWP 추출과 stable source span</td>
+          </tr>
+          <tr>
+            <td>Normalize</td>
+            <td><code>pkg/normalize/*.go</code></td>
+            <td>Offering, MyHome, schedule, LLM 결과 정규화</td>
+          </tr>
+          <tr>
+            <td>Persistence/API</td>
+            <td><code>pkg/persistence/*</code>, <code>schema/schema.sql</code>, <code>pkg/api/server.go</code></td>
+            <td>QA/upsert/index/schedule/API 조회 모델</td>
+          </tr>
+          <tr>
+            <td>Docs</td>
+            <td><code>README.md</code>, <code>docs/AI_HANDOFF.md</code>, <code>docs/architecture-redesign.md</code>, <code>LH_API.md</code></td>
+            <td>현재 파이프라인, 명령, 검증 수치, LH API 경로 반영</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>6. 검증 결과</h2>
+      <h3>테스트</h3>
+      <pre><code>go test ./...
+
+?    hic                         [no test files]
+ok   hic/pkg/api                 (cached)
+ok   hic/pkg/cli                 (cached)
+ok   hic/pkg/discovery           (cached)
+ok   hic/pkg/extraction          (cached)
+ok   hic/pkg/global              (cached)
+ok   hic/pkg/llm                 (cached)
+ok   hic/pkg/normalize           (cached)
+ok   hic/pkg/persistence         (cached)
+?    hic/pkg/persistence/db      [no test files]
+ok   hic/pkg/workflow            (cached)</code></pre>
+
+      <h3>SH 재수집 충돌 재현 조건</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>명령</th>
+            <th>결과</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>go run . workflow collect-sh --board rental --pages 1 --dry-run=false --preserve-attachments --max-age-days 0 --skip-existing=false --object-root .data/objects-check</code></td>
+            <td><span class="ok">성공</span>. <code>downloaded=11</code>, <code>upserted_artifacts=30</code>, <code>upserted_offerings=15</code>, unique 충돌 없음</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>LH 최신 dry-run</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>종류</th>
+            <th>명령</th>
+            <th>검증 수치</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>공공임대</td>
+            <td><code>go run . workflow collect-lh --kind rental --num-rows 200 --all-pages --dry-run=true --agency-filter LH</code></td>
+            <td><code>pages=3</code>, <code>total_count=418</code>, <code>raw_items=418</code>, <code>items=397</code></td>
+          </tr>
+          <tr>
+            <td>공공분양</td>
+            <td><code>go run . workflow collect-lh --kind sale --num-rows 200 --all-pages --dry-run=true --agency-filter LH</code></td>
+            <td><code>pages=1</code>, <code>total_count=52</code>, <code>raw_items=52</code>, <code>items=51</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>DB/QA 상태</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>지표</th>
+            <th>값</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>source_notices</code></td><td>401</td></tr>
+          <tr><td><code>attachments</code></td><td>29</td></tr>
+          <tr><td><code>extracted_artifacts</code></td><td>469</td></tr>
+          <tr><td><code>offerings_total</code></td><td>452</td></tr>
+          <tr><td><code>offerings_approved</code></td><td>356</td></tr>
+          <tr><td><code>offerings_pending</code></td><td>0</td></tr>
+          <tr><td><code>offerings_rejected</code></td><td>96</td></tr>
+          <tr><td><code>notice_schedules</code></td><td>393</td></tr>
+          <tr><td><code>llm_attempts</code></td><td>2</td></tr>
+          <tr><td><code>approved_legacy_path_spans</code></td><td>0</td></tr>
+        </tbody>
+      </table>
+
+      <h3>API 기본 노출</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>API</th>
+            <th>검증 결과</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/offerings?limit=1000</code></td>
+            <td>총 356건, 전부 <code>approved</code>. SH 20건, LH 335건, 부산도시공사 1건. legacy local-path source span 0건.</td>
+          </tr>
+          <tr>
+            <td><code>/schedules?limit=1000</code></td>
+            <td>총 337건 반환.</td>
+          </tr>
+          <tr>
+            <td><code>go run . llm candidates --limit 10</code></td>
+            <td><code>llm_candidates=0</code>. 기본 후보 조회에서 미보정 대상 없음.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>7. 공개 API 조사 반영</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>데이터셋</th>
+            <th>용도</th>
+            <th>반영 상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="https://www.data.go.kr/data/15108420/openapi.do">15108420 마이홈 공공주택 모집공고 조회 서비스</a></td>
+            <td>LH/MyHome 모집공고 주 수집 경로</td>
+            <td><span class="ok">반영</span></td>
+          </tr>
+          <tr>
+            <td><a href="https://www.data.go.kr/data/15110581/openapi.do">15110581 마이홈 공공임대주택 단지정보</a></td>
+            <td>단지정보 보조 enrichment 후보</td>
+            <td>문서화</td>
+          </tr>
+          <tr>
+            <td><a href="https://www.data.go.kr/data/15108378/openapi.do">15108378 마이홈 예비입주자 대기현황</a></td>
+            <td>대기현황 보조 확인 후보</td>
+            <td>문서화</td>
+          </tr>
+          <tr>
+            <td><a href="https://www.data.go.kr/data/15058476/openapi.do">15058476 LH 공공임대주택 단지정보</a></td>
+            <td>기존 LH 단지정보 보조 경로</td>
+            <td>문서화</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>8. 이슈와 해결</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>이슈</th>
+            <th>원인</th>
+            <th>처리</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SH 재수집 unique 충돌</td>
+            <td><code>source_span</code>에 <code>.data/objects</code>와 <code>.data/objects-check</code> 같은 로컬 경로가 들어감</td>
+            <td><code>object://...</code> 논리 span으로 교체하고 QA에서 legacy local-path span 승인 거부</td>
+          </tr>
+          <tr>
+            <td>pending 중복 후 QA 승격 충돌</td>
+            <td>approved partial unique index만으로 pending 중복을 막지 못함</td>
+            <td>QA 재평가와 application-unit/source identity 기준 정리</td>
+          </tr>
+          <tr>
+            <td>공급 정보 첨부 누락</td>
+            <td>파일명 기반 classifier가 팸플릿/공급 정보 PDF를 unsupported로 처리</td>
+            <td>공급 정보성 PDF 분류 보강</td>
+          </tr>
+          <tr>
+            <td>LH API 키 환경</td>
+            <td>셸에 <code>MYHOME_API_KEY</code>가 export되지 않으면 CLI가 즉시 실패</td>
+            <td>검증 명령은 <code>--service-key</code>로 실행. 문서에는 키 값 대신 보관 방식만 설명</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>9. 남은 권장 작업</h2>
+      <ul>
+        <li>마이홈 단지정보 API를 offering enrichment 후보로 붙이는 작업은 별도 이터레이션에서 진행한다.</li>
+        <li>HWP 외부 추출 도구 설치 여부를 운영 환경 체크 항목에 추가한다.</li>
+        <li>LLM repair 결과는 artifact별 회귀 fixture를 축적해 deterministic parser 개선 재료로 사용한다.</li>
+        <li>SH/LH 실시간 API 수치는 변동 가능하므로 배포 전 dry-run으로 재확인한다.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
