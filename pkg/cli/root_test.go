@@ -148,7 +148,7 @@ func TestNewRootCommand_CollectSHHelp가ActiveApplication옵션을노출한다(t
 	}
 
 	help := out.String()
-	for _, want := range []string{"--active-applications", "--active-sply-ty", "--active-max-pages"} {
+	for _, want := range []string{"--active-applications", "--active-sply-ty", "--active-max-pages", "--discovery-cache"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("collect-sh help missing %q:\n%s", want, help)
 		}

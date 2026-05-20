@@ -49,6 +49,20 @@ type ApplicationNoticeInput struct {
 	RawMetadata       map[string]any
 }
 
+type DiscoverySeenCacheInput struct {
+	Agency        string
+	BoardKind     string
+	Seq           string
+	Status        discovery.SeenCacheStatus
+	Reason        discovery.NoticeCategory
+	Title         string
+	PostedAt      time.Time
+	ExpiresAt     time.Time
+	PolicyVersion string
+	ParserVersion string
+	Evidence       map[string]any
+}
+
 type OfferingView struct {
 	ID                   int64    `json:"id"`
 	Agency               string   `json:"agency"`
@@ -207,6 +221,89 @@ set
 where id = $1
 `, applicationNoticeID, noticeID)
 	return err
+}
+
+func (r *Repository) UpsertDiscoverySeenCache(ctx context.Context, input DiscoverySeenCacheInput) error {
+	_, err := r.pool.Exec(ctx, `
+insert into discovery_seen_cache (
+	agency,
+	board_kind,
+	seq,
+	status,
+	reason,
+	list_title,
+	list_title_hash,
+	posted_at,
+	evidence_json,
+	expires_at,
+	policy_version,
+	parser_version,
+	last_detail_fetched_at
+)
+values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+on conflict (agency, board_kind, seq)
+do update set
+	status = excluded.status,
+	reason = excluded.reason,
+	list_title = excluded.list_title,
+	list_title_hash = excluded.list_title_hash,
+	posted_at = excluded.posted_at,
+	evidence_json = excluded.evidence_json,
+	expires_at = excluded.expires_at,
+	policy_version = excluded.policy_version,
+	parser_version = excluded.parser_version,
+	last_seen_at = now(),
+	last_detail_fetched_at = now(),
+	seen_count = discovery_seen_cache.seen_count + 1
+`,
+		input.Agency,
+		input.BoardKind,
+		input.Seq,
+		string(input.Status),
+		string(input.Reason),
+		input.Title,
+		discovery.SeenTitleHash(input.Title),
+		dateValue(input.PostedAt),
+		mustJSONAny(input.Evidence),
+		timestamptzValue(input.ExpiresAt),
+		input.PolicyVersion,
+		input.ParserVersion,
+	)
+	return err
+}
+
+func (r *Repository) FreshDiscoverySeenCache(ctx context.Context, agency string, boardKind string, now time.Time) (map[string]discovery.SeenCacheEntry, error) {
+	rows, err := r.pool.Query(ctx, `
+select seq, status, list_title_hash, posted_at, expires_at
+from discovery_seen_cache
+where agency = $1
+	and board_kind = $2
+	and (expires_at is null or expires_at > $3)
+`, agency, boardKind, timestamptzValue(now))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	entries := make(map[string]discovery.SeenCacheEntry)
+	for rows.Next() {
+		var entry discovery.SeenCacheEntry
+		var status string
+		var postedAt pgtype.Date
+		var expiresAt pgtype.Timestamptz
+		if err := rows.Scan(&entry.Seq, &status, &entry.ListTitleHash, &postedAt, &expiresAt); err != nil {
+			return nil, err
+		}
+		entry.Status = discovery.SeenCacheStatus(status)
+		if postedAt.Valid {
+			entry.PostedAt = postedAt.Time
+		}
+		if expiresAt.Valid {
+			entry.ExpiresAt = expiresAt.Time
+		}
+		entries[entry.Seq] = entry
+	}
+	return entries, rows.Err()
 }
 
 func ValidatePersistableCandidate(candidate discovery.Candidate) error {
@@ -569,6 +666,13 @@ func dateValue(value time.Time) pgtype.Date {
 		return pgtype.Date{}
 	}
 	return pgtype.Date{Time: value, Valid: true}
+}
+
+func timestamptzValue(value time.Time) pgtype.Timestamptz {
+	if value.IsZero() {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: value, Valid: true}
 }
 
 func numericPtrValue(value *float64) pgtype.Numeric {

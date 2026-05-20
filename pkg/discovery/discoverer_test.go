@@ -141,6 +141,77 @@ func TestDiscoverer_Discover_이미알려진Seq는상세조회하지않는다(t 
 	}
 }
 
+func TestDiscoverer_Discover_캐시된거절공고는상세조회하지않는다(t *testing.T) {
+	listHTML := `
+	<table id="listTb"><tbody>
+	<tr><td>1</td><td><a href="javascript:getDetailView('100');">당첨자 발표 안내</a></td><td>공급부</td><td>2026-05-13</td><td>1</td></tr>
+	<tr><td>2</td><td><a href="javascript:getDetailView('200');">입주자 모집공고</a></td><td>공급부</td><td>2026-05-13</td><td>1</td></tr>
+	</tbody></table>`
+	fetcher := fakeFetcher{
+		listHTML: listHTML,
+		detailHTMLs: map[string]string{
+			"200": `<table><tr><th>제목</th><td>입주자 모집공고</td></tr><tr><td class="cont">공급대상 있음</td></tr></table>`,
+		},
+	}
+
+	report, err := NewDiscoverer(fetcher).Discover(context.Background(), Board{Agency: "SH", BoardKind: "rental"}, Options{
+		Pages: 1,
+		SeenCache: map[string]SeenCacheEntry{
+			"100": {
+				Seq:           "100",
+				Status:        SeenCacheStatusRejected,
+				ListTitleHash: SeenTitleHash("당첨자 발표 안내"),
+				PostedAt:      time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC),
+				ExpiresAt:     time.Now().Add(24 * time.Hour),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if report.Details != 1 || report.SkippedSeen != 1 {
+		t.Fatalf("report counters = %+v", report)
+	}
+	if len(report.Candidates) != 1 || report.Candidates[0].Seq != "200" {
+		t.Fatalf("candidates = %+v", report.Candidates)
+	}
+}
+
+func TestDiscoverer_Discover_활성목표공고는거절캐시를무시한다(t *testing.T) {
+	listHTML := `
+	<table id="listTb"><tbody>
+	<tr><td>1</td><td><a href="javascript:getDetailView('303584');">2026년 전세임대형 든든주택 입주자 모집공고(2026.04.29.)</a></td><td>공급부</td><td>2026-04-29</td><td>1</td></tr>
+	</tbody></table>`
+	fetcher := fakeFetcher{
+		listHTML: listHTML,
+		detailHTMLs: map[string]string{
+			"303584": `<table><tr><th>제목</th><td>2026년 전세임대형 든든주택 입주자 모집공고(2026.04.29.)</td></tr><tr><td class="cont">공급대상 있음</td></tr></table>`,
+		},
+	}
+
+	report, err := NewDiscoverer(fetcher).Discover(context.Background(), Board{Agency: "SH", BoardKind: "rental"}, Options{
+		Pages:        1,
+		TargetTitles: []string{"2026년 전세임대형 든든주택 입주자 모집공고"},
+		SeenCache: map[string]SeenCacheEntry{
+			"303584": {
+				Seq:           "303584",
+				Status:        SeenCacheStatusRejected,
+				ListTitleHash: SeenTitleHash("2026년 전세임대형 든든주택 입주자 모집공고(2026.04.29.)"),
+				ExpiresAt:     time.Now().Add(24 * time.Hour),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if report.Details != 1 || report.SkippedSeen != 0 {
+		t.Fatalf("report counters = %+v", report)
+	}
+	if len(report.Candidates) != 1 || report.Candidates[0].Seq != "303584" {
+		t.Fatalf("candidates = %+v", report.Candidates)
+	}
+}
+
 func TestDiscoverer_Discover_컷오프보다오래된행을만나면페이지탐색을멈춘다(t *testing.T) {
 	listHTML := `
 	<table id="listTb"><tbody>

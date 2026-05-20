@@ -79,6 +79,46 @@ func TestRepository_ApplicationNotice_테스트별클린DB에서UpsertLink한다
 	}
 }
 
+func TestRepository_DiscoverySeenCache_테스트별클린DB에서FreshCache를조회한다(t *testing.T) {
+	repo := openCleanTestRepository(t)
+	ctx := context.Background()
+	posted := time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC)
+	expires := time.Now().Add(24 * time.Hour)
+
+	if err := repo.UpsertDiscoverySeenCache(ctx, DiscoverySeenCacheInput{
+		Agency:        "SH",
+		BoardKind:     "rental",
+		Seq:           "304999",
+		Status:        discovery.SeenCacheStatusRejected,
+		Reason:        discovery.NoticeCategoryRejected,
+		Title:         "당첨자 발표 안내",
+		PostedAt:      posted,
+		ExpiresAt:     expires,
+		PolicyVersion: "test-policy",
+		ParserVersion: "test-parser",
+		Evidence: map[string]any{
+			"matched_keywords": []string{"당첨자"},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertDiscoverySeenCache() error = %v", err)
+	}
+
+	cache, err := repo.FreshDiscoverySeenCache(ctx, "SH", "rental", time.Now())
+	if err != nil {
+		t.Fatalf("FreshDiscoverySeenCache() error = %v", err)
+	}
+	entry, ok := cache["304999"]
+	if !ok {
+		t.Fatalf("cache missing seq 304999: %+v", cache)
+	}
+	if entry.Status != discovery.SeenCacheStatusRejected {
+		t.Fatalf("Status = %q", entry.Status)
+	}
+	if !entry.CanSkipDetail(discovery.BoardRow{Seq: "304999", Title: "당첨자 발표 안내", PostedAt: posted}, time.Now()) {
+		t.Fatalf("entry should skip matching rejected row: %+v", entry)
+	}
+}
+
 func openCleanTestRepository(t *testing.T) *Repository {
 	t.Helper()
 	ctx := context.Background()
@@ -131,6 +171,7 @@ truncate table
 	attachment_extractions,
 	attachments,
 	application_notices,
+	discovery_seen_cache,
 	source_notices,
 	raw_documents,
 	stored_objects,

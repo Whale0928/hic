@@ -14,6 +14,7 @@ type Options struct {
 	CutoffDate   time.Time
 	KnownSeqs    map[string]bool
 	TargetTitles []string
+	SeenCache    map[string]SeenCacheEntry
 }
 
 type Candidate struct {
@@ -30,6 +31,7 @@ type RejectedPost struct {
 	BoardKind string
 	Seq       string
 	Title     string
+	PostedAt  time.Time
 	Reason    NoticeCategory
 }
 
@@ -41,6 +43,7 @@ type Report struct {
 	Details         int
 	SkippedOld      int
 	SkippedKnown    int
+	SkippedSeen     int
 	StoppedByCutoff bool
 	Candidates      []Candidate
 	Rejected        []RejectedPost
@@ -48,7 +51,7 @@ type Report struct {
 
 func (r Report) String() string {
 	return fmt.Sprintf(
-		"agency=%s board=%s pages=%d list_rows=%d details=%d candidates=%d rejected=%d skipped_old=%d skipped_known=%d stopped_by_cutoff=%t",
+		"agency=%s board=%s pages=%d list_rows=%d details=%d candidates=%d rejected=%d skipped_old=%d skipped_known=%d skipped_seen=%d stopped_by_cutoff=%t",
 		r.Agency,
 		r.BoardKind,
 		r.Pages,
@@ -58,6 +61,7 @@ func (r Report) String() string {
 		len(r.Rejected),
 		r.SkippedOld,
 		r.SkippedKnown,
+		r.SkippedSeen,
 		r.StoppedByCutoff,
 	)
 }
@@ -119,6 +123,10 @@ func (d Discoverer) Discover(ctx context.Context, board Board, opts Options) (Re
 			if opts.KnownSeqs[row.Seq] {
 				report.SkippedKnown++
 				delete(pendingTargets, targetKey)
+				continue
+			}
+			if !isTarget && opts.SeenCache[row.Seq].CanSkipDetail(row, time.Now()) {
+				report.SkippedSeen++
 				continue
 			}
 			if err := d.discoverDetail(ctx, board, row, &report); err != nil {
@@ -256,6 +264,7 @@ func (d Discoverer) discoverDetail(ctx context.Context, board Board, row BoardRo
 			BoardKind: row.BoardKind,
 			Seq:       row.Seq,
 			Title:     title,
+			PostedAt:  row.PostedAt,
 			Reason:    category,
 		})
 		return nil

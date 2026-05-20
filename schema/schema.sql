@@ -123,6 +123,39 @@ create index if not exists idx_application_notices_status on application_notices
 create index if not exists idx_application_notices_posted_at on application_notices(posted_at desc);
 create index if not exists idx_application_notices_metadata on application_notices using gin(raw_metadata);
 
+create table if not exists discovery_seen_cache (
+	id bigserial primary key,
+	agency text not null,
+	board_kind text not null,
+	seq text not null,
+	status text not null,
+	reason text not null default '',
+	list_title text not null default '',
+	list_title_hash text not null default '',
+	detail_title text not null default '',
+	detail_title_hash text not null default '',
+	posted_at date,
+	source_url text not null default '',
+	detail_url text not null default '',
+	request_fingerprint text not null default '',
+	evidence_json jsonb not null default '{}'::jsonb,
+	attachments_json jsonb not null default '[]'::jsonb,
+	source_notice_id bigint references source_notices(id),
+	first_seen_at timestamptz not null default now(),
+	last_seen_at timestamptz not null default now(),
+	last_detail_fetched_at timestamptz,
+	seen_count integer not null default 1,
+	expires_at timestamptz,
+	policy_version text not null default '',
+	parser_version text not null default '',
+	unique (agency, board_kind, seq)
+);
+
+create index if not exists idx_discovery_seen_cache_fresh on discovery_seen_cache(agency, board_kind, expires_at);
+create index if not exists idx_discovery_seen_cache_status on discovery_seen_cache(agency, board_kind, status);
+create index if not exists idx_discovery_seen_cache_title_hash on discovery_seen_cache(agency, board_kind, list_title_hash);
+create index if not exists idx_discovery_seen_cache_evidence on discovery_seen_cache using gin(evidence_json);
+
 create table if not exists attachments (
 	id bigserial primary key,
 	notice_id bigint references source_notices(id),

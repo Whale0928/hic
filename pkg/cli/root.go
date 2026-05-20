@@ -257,6 +257,7 @@ func collectionRunStats(report discovery.Report, downloaded int, insertedArtifac
 		"rejected":           len(report.Rejected),
 		"skipped_old":        report.SkippedOld,
 		"skipped_known":      report.SkippedKnown,
+		"skipped_seen":       report.SkippedSeen,
 		"stopped_by_cutoff":  report.StoppedByCutoff,
 		"downloaded":         downloaded,
 		"inserted_artifacts": insertedArtifacts,
@@ -476,6 +477,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 	var activeApplications bool
 	var activeSplyTy string
 	var activeMaxPages int
+	var discoveryCache bool
 
 	cmd := &cobra.Command{
 		Use:   "collect-sh",
@@ -502,6 +504,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			var upsertedOfferings int
 			var upsertedApplications int
 			var linkedApplications int
+			var upsertedDiscoverySeen int
 			var storedObjects int64
 			var totalArtifacts int64
 			var totalOfferings int64
@@ -520,6 +523,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 					stats := collectionRunStats(report, downloaded, insertedArtifacts, upsertedOfferings, storedObjects, totalArtifacts, totalOfferings)
 					stats["upserted_application_notices"] = upsertedApplications
 					stats["linked_application_notices"] = linkedApplications
+					stats["upserted_discovery_seen_cache"] = upsertedDiscoverySeen
 					finishErr := repo.FinishCollectionRun(cmd.Context(), runID, status, stats, errorText)
 					if err == nil && finishErr != nil {
 						err = finishErr
@@ -530,6 +534,13 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			var knownSeqs map[string]bool
 			if skipExisting && strings.TrimSpace(seqs) == "" {
 				knownSeqs, err = repo.ExistingNoticeSeqs(cmd.Context(), board.Agency, board.BoardKind)
+				if err != nil {
+					return err
+				}
+			}
+			var seenCache map[string]discovery.SeenCacheEntry
+			if discoveryCache && strings.TrimSpace(seqs) == "" {
+				seenCache, err = repo.FreshDiscoverySeenCache(cmd.Context(), board.Agency, board.BoardKind, time.Now())
 				if err != nil {
 					return err
 				}
@@ -550,6 +561,7 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 				CutoffDate:   cutoffDate(maxAgeDays),
 				KnownSeqs:    knownSeqs,
 				TargetTitles: shdiscovery.ActiveTargetTitles(applications),
+				SeenCache:    seenCache,
 			})
 			if err != nil {
 				return err
@@ -559,6 +571,13 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			if activeApplications {
 				fmt.Fprintf(cmd.OutOrStdout(), "active_applications=%d linked=%d unmatched=%d\n", len(applications), len(reconcileResult.Linked), len(reconcileResult.UnmatchedApplications))
 				writeSHApplicationLinks(cmd.OutOrStdout(), reconcileResult)
+			}
+			if discoveryCache && !dryRun {
+				upsertedDiscoverySeen, err = upsertDiscoverySeenCache(cmd.Context(), repo, report, time.Now())
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "discovery_cache skipped_seen=%d upserted=%d\n", report.SkippedSeen, upsertedDiscoverySeen)
 			}
 			if dryRun || !preserveAttachments {
 				return nil
@@ -657,16 +676,63 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&activeApplications, "active-applications", false, "SH 인터넷청약 청약중/접수예정 공고를 먼저 수집해 게시판 탐색 목표로 사용합니다")
 	cmd.Flags().StringVar(&activeSplyTy, "active-sply-ty", "", "쉼표로 구분한 SH 인터넷청약 공급유형 코드. 비우면 기본 전체를 조회합니다")
 	cmd.Flags().IntVar(&activeMaxPages, "active-max-pages", 10, "인터넷청약 활성 공고 reconcile을 위해 탐색할 최대 게시판 페이지 수")
+	cmd.Flags().BoolVar(&discoveryCache, "discovery-cache", true, "비모집/거절 공고 상세 재조회 방지를 위한 discovery seen cache를 사용합니다")
 	return cmd
 }
 
-func formatCollectionSummary(downloaded int, insertedArtifacts int, upsertedOfferings int, storedObjects int64, totalArtifacts int64, totalOfferings int64, qaSummary persistence.QASummary) string {
+const (
+	discoverySeenCachePolicyVersion = "sh-discovery-cache-v1"
+	discoverySeenCacheParserVersion = "sh-board-parser-v1"
+	discoverySeenCacheRejectedTTL   = 60 * 24 * time.Hour
+	discoverySeenCacheUnknownTTL    = 7 * 24 * time.Hour
+)
+
+func upsertDiscoverySeenCache(ctx context.Context, repo *persistence.Repository, report discovery.Report, now time.Time) (int, error) {
+	upserted := 0
+	for _, rejected := range report.Rejected {
+		if strings.TrimSpace(rejected.Seq) == "" {
+			continue
+		}
+		if err := repo.UpsertDiscoverySeenCache(ctx, discoverySeenCacheInputFromRejectedPost(rejected, now)); err != nil {
+			return upserted, err
+		}
+		upserted++
+	}
+	return upserted, nil
+}
+
+func discoverySeenCacheInputFromRejectedPost(rejected discovery.RejectedPost, now time.Time) persistence.DiscoverySeenCacheInput {
+	status := discovery.SeenCacheStatusRejected
+	ttl := discoverySeenCacheRejectedTTL
+	if rejected.Reason == discovery.NoticeCategoryUnknown {
+		status = discovery.SeenCacheStatusRejectedUnknown
+		ttl = discoverySeenCacheUnknownTTL
+	}
+	return persistence.DiscoverySeenCacheInput{
+		Agency:        rejected.Agency,
+		BoardKind:     rejected.BoardKind,
+		Seq:           rejected.Seq,
+		Status:        status,
+		Reason:        rejected.Reason,
+		Title:         rejected.Title,
+		PostedAt:      rejected.PostedAt,
+		ExpiresAt:     now.Add(ttl),
+		PolicyVersion: discoverySeenCachePolicyVersion,
+		ParserVersion: discoverySeenCacheParserVersion,
+		Evidence: map[string]any{
+			"reason": string(rejected.Reason),
+			"title":  rejected.Title,
+		},
+	}
+}
+
+func formatCollectionSummary(downloaded int, upsertedArtifacts int, upsertedOfferings int, storedObjects int64, totalArtifacts int64, totalOfferings int64, qaSummary persistence.QASummary) string {
 	return fmt.Sprintf(
 		"db stored_objects=%d extracted_artifacts=%d offerings=%d inserted_artifacts=%d upserted_offerings=%d qa_approved=%d qa_rejected=%d qa_pending=%d\n",
 		storedObjects,
 		totalArtifacts,
 		totalOfferings,
-		insertedArtifacts,
+		upsertedArtifacts,
 		upsertedOfferings,
 		qaSummary.Approved,
 		qaSummary.Rejected,
