@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -32,36 +33,43 @@ type MyHomePage struct {
 }
 
 type MyHomeNoticeItem struct {
-	NoticeID           string
-	HouseSN            int
-	Status             string
-	Title              string
-	Agency             string
-	HouseType          string
-	SupplyType         string
-	PostedDate         string
-	WinnerDate         string
-	SupplyCount        *int
-	Reference          string
-	SourceURL          string
-	DetailURL          string
-	MobileURL          string
-	ComplexName        string
-	Province           string
-	City               string
-	Address            string
-	LegalDong          string
-	PNU                string
-	HeatingMethod      string
-	TotalHousehold     string
-	DepositKRW         *int64
-	MonthlyRent        *int64
-	ContractPaymentKRW *int64
-	InterimPaymentKRW  *int64
-	BalancePaymentKRW  *int64
-	ApplicationBeg     string
-	ApplicationEnd     string
-	Raw                map[string]any
+	NoticeID                 string
+	HouseSN                  int
+	Status                   string
+	Title                    string
+	Agency                   string
+	HouseType                string
+	SupplyType               string
+	PostedDate               string
+	WinnerDate               string
+	SupplyCount              *int
+	SupplyCountText          string
+	Reference                string
+	SourceURL                string
+	DetailURL                string
+	MobileURL                string
+	ComplexName              string
+	Province                 string
+	City                     string
+	Address                  string
+	LegalDong                string
+	PNU                      string
+	HeatingMethod            string
+	TotalHousehold           string
+	DepositKRW               *int64
+	MonthlyRent              *int64
+	ContractPaymentKRW       *int64
+	InterimPaymentKRW        *int64
+	BalancePaymentKRW        *int64
+	ApplicationBeg           string
+	ApplicationEnd           string
+	TargetHouseInfoText      string
+	SupportLimitText         string
+	RentConditionText        string
+	DepositConditionText     string
+	MonthlyRentConditionText string
+	LeasePeriodText          string
+	Raw                      map[string]any
 }
 
 func (i MyHomeNoticeItem) SourceSeq() string {
@@ -216,6 +224,7 @@ func parseMyHomeItems(raw json.RawMessage) ([]MyHomeNoticeItem, error) {
 
 	items := make([]MyHomeNoticeItem, 0, len(rows))
 	for _, row := range rows {
+		supplyCountText := stringFromAny(row["suplyHoCo"])
 		items = append(items, MyHomeNoticeItem{
 			NoticeID:           stringFromAny(row["pblancId"]),
 			HouseSN:            intFromAny(row["houseSn"]),
@@ -226,7 +235,8 @@ func parseMyHomeItems(raw json.RawMessage) ([]MyHomeNoticeItem, error) {
 			SupplyType:         stringFromAny(row["suplyTyNm"]),
 			PostedDate:         stringFromAny(row["rcritPblancDe"]),
 			WinnerDate:         stringFromAny(row["przwnerPresnatnDe"]),
-			SupplyCount:        intPtrFromAny(row["sumSuplyCo"]),
+			SupplyCount:        firstPositiveIntPtr(intPtrFromAny(row["sumSuplyCo"]), parseSupplyCountText(supplyCountText)),
+			SupplyCountText:    supplyCountText,
 			Reference:          stringFromAny(row["refrnc"]),
 			SourceURL:          stringFromAny(row["url"]),
 			DetailURL:          stringFromAny(row["pcUrl"]),
@@ -239,17 +249,45 @@ func parseMyHomeItems(raw json.RawMessage) ([]MyHomeNoticeItem, error) {
 			PNU:                stringFromAny(row["pnu"]),
 			HeatingMethod:      stringFromAny(row["heatMthdNm"]),
 			TotalHousehold:     stringFromAny(row["totHshldCo"]),
-			DepositKRW:         int64PtrFromAny(row["rentGtn"]),
-			MonthlyRent:        int64PtrFromAny(row["mtRntchrg"]),
-			ContractPaymentKRW: int64PtrFromAny(row["enty"]),
-			InterimPaymentKRW:  int64PtrFromAny(row["prtpay"]),
-			BalancePaymentKRW:  int64PtrFromAny(row["surlus"]),
+			DepositKRW:         positiveInt64PtrFromAny(row["rentGtn"]),
+			MonthlyRent:        positiveInt64PtrFromAny(row["mtRntchrg"]),
+			ContractPaymentKRW: positiveInt64PtrFromAny(row["enty"]),
+			InterimPaymentKRW:  positiveInt64PtrFromAny(row["prtpay"]),
+			BalancePaymentKRW:  positiveInt64PtrFromAny(row["surlus"]),
 			ApplicationBeg:     stringFromAny(row["beginDe"]),
 			ApplicationEnd:     stringFromAny(row["endDe"]),
 			Raw:                row,
 		})
 	}
 	return items, nil
+}
+
+func (i MyHomeNoticeItem) WithDetail(detail MyHomeNoticeDetail) MyHomeNoticeItem {
+	if (i.SupplyCount == nil || *i.SupplyCount <= 0) && detail.SupplyCount != nil {
+		i.SupplyCount = cloneInt(detail.SupplyCount)
+	}
+	if strings.TrimSpace(i.SupplyCountText) == "" {
+		i.SupplyCountText = detail.SupplyCountText
+	}
+	if strings.TrimSpace(i.TargetHouseInfoText) == "" {
+		i.TargetHouseInfoText = detail.TargetHouseInfoText
+	}
+	if strings.TrimSpace(i.SupportLimitText) == "" {
+		i.SupportLimitText = detail.SupportLimitText
+	}
+	if strings.TrimSpace(i.RentConditionText) == "" {
+		i.RentConditionText = detail.RentConditionText
+	}
+	if strings.TrimSpace(i.DepositConditionText) == "" {
+		i.DepositConditionText = detail.DepositConditionText
+	}
+	if strings.TrimSpace(i.MonthlyRentConditionText) == "" {
+		i.MonthlyRentConditionText = detail.MonthlyRentConditionText
+	}
+	if strings.TrimSpace(i.LeasePeriodText) == "" {
+		i.LeasePeriodText = detail.LeasePeriodText
+	}
+	return i
 }
 
 func stringFromAny(value any) string {
@@ -317,4 +355,43 @@ func int64PtrFromAny(value any) *int64 {
 	default:
 		return nil
 	}
+}
+
+func positiveInt64PtrFromAny(value any) *int64 {
+	ptr := int64PtrFromAny(value)
+	if ptr == nil || *ptr <= 0 {
+		return nil
+	}
+	return ptr
+}
+
+var supplyCountPattern = regexp.MustCompile(`([0-9][0-9,]*)\s*호`)
+
+func parseSupplyCountText(text string) *int {
+	match := supplyCountPattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return nil
+	}
+	parsed, err := strconv.Atoi(strings.ReplaceAll(match[1], ",", ""))
+	if err != nil || parsed <= 0 {
+		return nil
+	}
+	return &parsed
+}
+
+func firstPositiveIntPtr(values ...*int) *int {
+	for _, value := range values {
+		if value != nil && *value > 0 {
+			return value
+		}
+	}
+	return nil
+}
+
+func cloneInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	out := *value
+	return &out
 }

@@ -733,6 +733,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 	var allPages bool
 	var agencyFilter string
 	var showItems bool
+	var fetchDetails bool
 
 	cmd := &cobra.Command{
 		Use:   "collect-lh",
@@ -789,6 +790,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 				return err
 			}
 			upsertedArtifacts := 0
+			upsertedDetailArtifacts := 0
 			upsertedOfferings := 0
 			upsertedSchedules := 0
 			defer func() {
@@ -799,18 +801,19 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 					errorText = err.Error()
 				}
 				stats := map[string]any{
-					"kind":               kind,
-					"endpoint":           string(endpoint),
-					"pages":              pages,
-					"pages_fetched":      pagesToFetch,
-					"num_rows":           numRows,
-					"total_count":        totalCount,
-					"items":              len(items),
-					"raw_items":          rawItems,
-					"agency_filter":      agencyFilter,
-					"upserted_artifacts": upsertedArtifacts,
-					"upserted_offerings": upsertedOfferings,
-					"upserted_schedules": upsertedSchedules,
+					"kind":                      kind,
+					"endpoint":                  string(endpoint),
+					"pages":                     pages,
+					"pages_fetched":             pagesToFetch,
+					"num_rows":                  numRows,
+					"total_count":               totalCount,
+					"items":                     len(items),
+					"raw_items":                 rawItems,
+					"agency_filter":             agencyFilter,
+					"upserted_artifacts":        upsertedArtifacts,
+					"upserted_detail_artifacts": upsertedDetailArtifacts,
+					"upserted_offerings":        upsertedOfferings,
+					"upserted_schedules":        upsertedSchedules,
 				}
 				finishErr := repo.FinishCollectionRun(ctx, runID, status, stats, errorText)
 				if err == nil && finishErr != nil {
@@ -828,8 +831,21 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 					return err
 				}
 				upsertedArtifacts++
+				offeringArtifactID := artifactID
+				if fetchDetails && shouldFetchMyHomeDetail(item) {
+					detail, detailErr := client.GetNoticeDetail(ctx, item.DetailURL)
+					if detailErr == nil {
+						item = item.WithDetail(detail)
+						detailArtifactID, _, err := repo.InsertMyHomeDetailArtifact(ctx, endpoint, item, detail)
+						if err != nil {
+							return err
+						}
+						offeringArtifactID = detailArtifactID
+						upsertedDetailArtifacts++
+					}
+				}
 				offering := normalize.OfferingFromMyHomeItem(item, sourceSpan)
-				if _, err := repo.UpsertMyHomeOffering(ctx, noticeID, artifactID, item.Agency, offering); err != nil {
+				if _, err := repo.UpsertMyHomeOffering(ctx, noticeID, offeringArtifactID, item.Agency, offering); err != nil {
 					return err
 				}
 				upsertedOfferings++
@@ -857,7 +873,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 				storedObjects,
 				totalArtifacts,
 				totalOfferings,
-				upsertedArtifacts,
+				upsertedArtifacts+upsertedDetailArtifacts,
 				upsertedOfferings,
 				upsertedSchedules,
 				qaSummary.Approved,
@@ -875,6 +891,7 @@ func newWorkflowCollectLHCommand(ctx context.Context, cfg global.Config) *cobra.
 	cmd.Flags().BoolVar(&allPages, "all-pages", false, "첫 페이지 totalCount 기준으로 모든 MyHome 페이지를 조회합니다")
 	cmd.Flags().StringVar(&agencyFilter, "agency-filter", "", "특정 공급기관명만 저장/출력합니다. 예: LH")
 	cmd.Flags().BoolVar(&showItems, "show-items", false, "dry-run에서 MyHome 후보 목록을 상세 출력합니다")
+	cmd.Flags().BoolVar(&fetchDetails, "fetch-details", true, "금액/공급호수 보강이 필요한 MyHome 상세 HTML을 조회합니다")
 	return cmd
 }
 
@@ -886,6 +903,27 @@ func myHomeEndpointFromKind(kind string) (lhdiscovery.MyHomeEndpoint, error) {
 		return lhdiscovery.MyHomeSale, nil
 	default:
 		return "", fmt.Errorf("unknown MyHome kind: %s", kind)
+	}
+}
+
+func shouldFetchMyHomeDetail(item lhdiscovery.MyHomeNoticeItem) bool {
+	if strings.TrimSpace(item.DetailURL) == "" {
+		return false
+	}
+	if item.SupplyCount == nil || *item.SupplyCount <= 0 {
+		return true
+	}
+	if strings.TrimSpace(item.SupplyType) == "" {
+		return false
+	}
+	if item.DepositKRW != nil && item.MonthlyRent != nil {
+		return false
+	}
+	switch strings.TrimSpace(item.SupplyType) {
+	case "전세임대", "매입임대":
+		return true
+	default:
+		return false
 	}
 }
 

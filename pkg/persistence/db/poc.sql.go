@@ -501,24 +501,31 @@ with evaluated as (
 			and (
 				(
 					deposit_krw is not null
-					and deposit_krw >= 0
+					and deposit_krw > 0
 					and monthly_rent_krw is not null
-					and monthly_rent_krw >= 0
+					and monthly_rent_krw > 0
 				)
 				or (
 					jeonse_deposit_krw is not null
-					and jeonse_deposit_krw >= 0
+					and jeonse_deposit_krw > 0
 				)
 				or (
 					dormitory_fee_krw is not null
-					and dormitory_fee_krw >= 0
+					and dormitory_fee_krw > 0
 				)
 				or (
 					source = 'myhome'
 					and contract_deposit_krw is not null
-					and contract_deposit_krw >= 0
+					and contract_deposit_krw > 0
 					and balance_payment_krw is not null
-					and balance_payment_krw >= 0
+					and balance_payment_krw > 0
+				)
+				or (
+					source = 'myhome'
+					and trim(deposit_text) <> ''
+					and trim(monthly_rent_text) <> ''
+					and position('자세한 사항' in deposit_text) = 0
+					and position('자세한 사항' in monthly_rent_text) = 0
 				)
 			)
 		) as passes

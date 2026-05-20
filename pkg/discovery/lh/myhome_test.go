@@ -123,6 +123,47 @@ func TestMyHomeClient_ListNotices_공공분양납부금액을파싱한다(t *tes
 	}
 }
 
+func TestMyHomeClient_ListNotices_sumSuplyCo가0이면공급호수문구에서보정한다(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"response": {
+				"header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE"},
+				"body": {
+					"totalCount": "1",
+					"item": {
+						"pblancId": "19631",
+						"houseSn": 0,
+						"pblancNm": "2026년 청년 전세임대 1순위 입주자 수시모집",
+						"suplyInsttNm": "LH",
+						"houseTyNm": "아파트",
+						"suplyTyNm": "전세임대",
+						"sumSuplyCo": 0,
+						"suplyHoCo": "7,000호\r\n* 1순위 수요에 따라 목표 물량 조기 소진의 경우 1순위 추가 공급 가능",
+						"rentGtn": 0,
+						"mtRntchrg": 0
+					}
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := MyHomeClient{BaseURL: server.URL, ServiceKey: "test-key", HTTPClient: server.Client()}
+	page, err := client.ListNotices(context.Background(), MyHomeRental, 1, 1)
+	if err != nil {
+		t.Fatalf("ListNotices() error = %v", err)
+	}
+
+	item := page.Items[0]
+	if item.SupplyCount == nil || *item.SupplyCount != 7000 {
+		t.Fatalf("SupplyCount = %v, want 7000", item.SupplyCount)
+	}
+	if item.DepositKRW != nil || item.MonthlyRent != nil {
+		t.Fatalf("zero API money should be treated as unavailable: deposit=%v rent=%v", item.DepositKRW, item.MonthlyRent)
+	}
+}
+
 func TestMyHomeClient_ListNotices_요청에러에서서비스키를마스킹한다(t *testing.T) {
 	client := MyHomeClient{
 		BaseURL:    "https://example.test",

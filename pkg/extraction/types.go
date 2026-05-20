@@ -21,6 +21,7 @@ const (
 	ArtifactTypeHWPText        ArtifactType = "hwp_text"
 	ArtifactTypeHWPUnsupported ArtifactType = "hwp_unsupported"
 	ArtifactTypeMyHomeAPIItem  ArtifactType = "myhome_api_item"
+	ArtifactTypeMyHomeDetail   ArtifactType = "myhome_detail_html"
 	ArtifactTypeHTMLPreview    ArtifactType = "html_preview"
 	ArtifactTypeHWPXText       ArtifactType = "hwpx_text"
 )

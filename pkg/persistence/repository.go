@@ -632,6 +632,48 @@ returning id
 	return id, sourceSpan, err
 }
 
+func (r *Repository) InsertMyHomeDetailArtifact(ctx context.Context, endpoint lhdiscovery.MyHomeEndpoint, item lhdiscovery.MyHomeNoticeItem, detail lhdiscovery.MyHomeNoticeDetail) (int64, string, error) {
+	sourceSpan := lhdiscovery.MyHomeSourceSpan(endpoint, item) + "#detail"
+	content, err := detail.JSONContent()
+	if err != nil {
+		return 0, "", err
+	}
+	var id int64
+	err = r.pool.QueryRow(ctx, `
+insert into extracted_artifacts (
+	artifact_type,
+	extractor,
+	status,
+	schema_version,
+	raw_text,
+	content_json,
+	source_span,
+	confidence
+)
+values ($1, $2, $3, $4, $5, $6, $7, $8)
+on conflict (artifact_type, source_span)
+where attachment_id is null and source_span <> ''
+do update set
+	extractor = excluded.extractor,
+	status = excluded.status,
+	schema_version = excluded.schema_version,
+	raw_text = excluded.raw_text,
+	content_json = excluded.content_json,
+	confidence = excluded.confidence
+returning id
+`,
+		string(extraction.ArtifactTypeMyHomeDetail),
+		"myhome-detail-html",
+		string(extraction.ArtifactStatusExtracted),
+		"v1",
+		detail.RawText,
+		content,
+		sourceSpan,
+		numericValue(1),
+	).Scan(&id)
+	return id, sourceSpan, err
+}
+
 func (r *Repository) UpsertMyHomeOffering(ctx context.Context, noticeID int64, sourceArtifactID int64, agency string, offering normalize.OfferingCandidate) (int64, error) {
 	var id int64
 	err := r.pool.QueryRow(ctx, `

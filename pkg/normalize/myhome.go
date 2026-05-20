@@ -36,6 +36,13 @@ func OfferingFromMyHomeItem(item lhdiscovery.MyHomeNoticeItem, sourceSpan string
 		"detail_url": item.DetailURL,
 		"source_url": item.SourceURL,
 	}
+	addRawString(rawRow, "supply_count_text", item.SupplyCountText)
+	addRawString(rawRow, "target_house_info_text", item.TargetHouseInfoText)
+	addRawString(rawRow, "support_limit_text", item.SupportLimitText)
+	addRawString(rawRow, "rent_condition_text", item.RentConditionText)
+	addRawString(rawRow, "deposit_condition_text", item.DepositConditionText)
+	addRawString(rawRow, "monthly_rent_condition_text", item.MonthlyRentConditionText)
+	addRawString(rawRow, "lease_period_text", item.LeasePeriodText)
 	if item.InterimPaymentKRW != nil {
 		rawRow["interim_payment_krw"] = *item.InterimPaymentKRW
 	}
@@ -49,9 +56,11 @@ func OfferingFromMyHomeItem(item lhdiscovery.MyHomeNoticeItem, sourceSpan string
 		HousingName:          item.ComplexName,
 		ComplexName:          item.ComplexName,
 		UnitType:             item.HouseType,
+		DepositText:          item.DepositConditionText,
 		DepositKRW:           cloneInt64Ptr(item.DepositKRW),
 		ContractDepositKRW:   cloneInt64Ptr(item.ContractPaymentKRW),
 		BalancePaymentKRW:    balancePayment,
+		MonthlyRentText:      item.MonthlyRentConditionText,
 		MonthlyRentKRW:       cloneInt64Ptr(item.MonthlyRent),
 		SupplyCount:          cloneIntPtr(item.SupplyCount),
 		HeatingMethod:        item.HeatingMethod,
@@ -59,6 +68,14 @@ func OfferingFromMyHomeItem(item lhdiscovery.MyHomeNoticeItem, sourceSpan string
 		RawRow:               rawRow,
 		Confidence:           0.95,
 	}
+}
+
+func addRawString(rawRow map[string]any, key string, value string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
+	}
+	rawRow[key] = value
 }
 
 func ApplicationScheduleFromMyHomeItem(item lhdiscovery.MyHomeNoticeItem, noticeID int64, sourceSpan string) (NoticeScheduleCandidate, bool) {
