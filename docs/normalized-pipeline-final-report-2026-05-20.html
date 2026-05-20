@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HIC SH/LH 정제 수집 파이프라인 최종 결과</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --paper: #ffffff;
+      --ink: #18212f;
+      --muted: #617085;
+      --line: #d9e2ec;
+      --soft: #eef6ff;
+      --accent: #1d5fbf;
+      --ok: #0f766e;
+      --warn: #8a5a00;
+      --code: #111827;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.62;
+      letter-spacing: 0;
+    }
+
+    main {
+      width: min(1160px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 36px 0 56px;
+    }
+
+    header,
+    section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    header {
+      padding: 30px 34px;
+      margin-bottom: 16px;
+    }
+
+    section {
+      padding: 24px 28px;
+      margin-top: 16px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+      font-size: 30px;
+      line-height: 1.24;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 14px;
+      font-size: 21px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin-bottom: 12px;
+    }
+
+    code {
+      padding: 2px 5px;
+      border: 1px solid #d7e0eb;
+      border-radius: 5px;
+      background: #f7fafc;
+      color: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 12px 0 0;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #e5edf7;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5ebf2;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f7f9fc;
+      color: #314155;
+      font-weight: 700;
+    }
+
+    ul {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    .subtitle {
+      max-width: 860px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 3px 10px;
+      border: 1px solid #c9d8ea;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #174b87;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .metric {
+      min-height: 100px;
+      padding: 15px 16px;
+      border: 1px solid #dce5ef;
+      border-radius: 8px;
+      background: #fbfdff;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      line-height: 1.1;
+      color: #102a43;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .ok {
+      color: var(--ok);
+      font-weight: 700;
+    }
+
+    .warn {
+      color: var(--warn);
+      font-weight: 700;
+    }
+
+    .note {
+      margin-top: 12px;
+      padding: 11px 13px;
+      border-left: 4px solid var(--accent);
+      background: #f5faff;
+      color: #2d4059;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .step {
+      min-height: 78px;
+      padding: 10px 11px;
+      border: 1px solid #cfd8e3;
+      border-radius: 8px;
+      background: #fbfdff;
+      font-size: 13px;
+    }
+
+    .step b {
+      display: block;
+      margin-bottom: 4px;
+      color: #243b53;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        width: min(100% - 24px, 1160px);
+        padding-top: 22px;
+      }
+
+      header,
+      section {
+        padding: 20px;
+      }
+
+      .summary,
+      .flow,
+      .two-col {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .summary,
+      .flow,
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>HIC SH/LH 정제 수집 파이프라인 최종 결과</h1>
+      <p class="subtitle">
+        2026-05-20 기준으로 SH 게시판 수집과 LH/MyHome 수집을 모두
+        <b>원본 보존 → artifact 추출 → Offering 정규화 → QA 승인</b> 흐름으로 정리했고,
+        serving/API 기본 노출 대상은 QA-approved normalized offerings만 남도록 검증했다.
+      </p>
+      <div class="meta">
+        <span class="pill">프로젝트: /Users/hgkim/workspace/hic</span>
+        <span class="pill">검증일: 2026-05-20</span>
+        <span class="pill">최종 QA rejected: 0</span>
+        <span class="pill">최신 커밋: 1f6a601</span>
+      </div>
+      <div class="summary">
+        <div class="metric">
+          <strong>425</strong>
+          <span>QA-approved offerings 전체</span>
+        </div>
+        <div class="metric">
+          <strong>30</strong>
+          <span>SH approved offerings</span>
+        </div>
+        <div class="metric">
+          <strong>395</strong>
+          <span>LH approved offerings</span>
+        </div>
+        <div class="metric">
+          <strong>0</strong>
+          <span>QA rejected / pending offerings</span>
+        </div>
+      </div>
+    </header>
+
+    <section>
+      <h2>결론</h2>
+      <p>
+        목표였던 “공고 원문 덤프가 아니라 QA 가능한 정제 데이터” 기준은 현재 검증 DB에서 충족했다.
+        SH와 LH 모두 최종 저장 단위는 신청 가능한 단위인 <code>Offering</code>이며,
+        개별 호실이 없는 공급호수형/프로그램형 공고는 <code>unit_no</code>를 비워 둔 채
+        <code>application_unit_label</code>, <code>supply_count</code>, 임대조건 텍스트/금액으로 정규화했다.
+      </p>
+      <div class="note">
+        serving/API 기본 대상은 <code>qa_status='approved'</code>만 사용하면 된다.
+        최종 검증에서 SH와 LH 모두 rejected/pending 없이 approved로 수렴했다.
+      </div>
+    </section>
+
+    <section>
+      <h2>최종 DB 검증 수치</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>항목</th>
+            <th>값</th>
+            <th>의미</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>source_notices</code></td>
+            <td>402</td>
+            <td>SH 모집공고 7건 + LH/MyHome 모집공고 395건</td>
+          </tr>
+          <tr>
+            <td><code>attachments</code></td>
+            <td>29</td>
+            <td>SH 첨부 27건 + LH/MyHome 공고문 PDF fallback 2건</td>
+          </tr>
+          <tr>
+            <td><code>stored_objects</code></td>
+            <td>56</td>
+            <td>원본 첨부와 preview/object 보존 결과</td>
+          </tr>
+          <tr>
+            <td><code>extracted_artifacts</code></td>
+            <td>473</td>
+            <td>PDF/HWP/HTML/MyHome API/detail 추출 산출물</td>
+          </tr>
+          <tr>
+            <td><code>offerings</code></td>
+            <td>425 approved</td>
+            <td>SH 30건, LH 395건</td>
+          </tr>
+          <tr>
+            <td><code>notice_schedules</code></td>
+            <td>396</td>
+            <td>신청 일정 구조화 결과</td>
+          </tr>
+          <tr>
+            <td><code>application_notices</code></td>
+            <td>1</td>
+            <td>SH 활성 청약 공고 연계 결과</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Artifact 분포</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>artifact_type</th>
+            <th>count</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>html_preview</code></td><td>27</td></tr>
+          <tr><td><code>hwp_text</code></td><td>1</td></tr>
+          <tr><td><code>myhome_api_item</code></td><td>395</td></tr>
+          <tr><td><code>myhome_detail_html</code></td><td>10</td></tr>
+          <tr><td><code>pdf_table_row</code></td><td>29</td></tr>
+          <tr><td><code>pdf_text</code></td><td>11</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>파이프라인 구조</h2>
+      <div class="flow">
+        <div class="step">
+          <b>1. Discovery</b>
+          SH 게시판 / LH MyHome API에서 모집공고 후보만 식별
+        </div>
+        <div class="step">
+          <b>2. Preserve</b>
+          원문 첨부, preview, MyHome 공고문 PDF를 object store에 보존
+        </div>
+        <div class="step">
+          <b>3. Extract</b>
+          PDF, HWP, HWPX, HTML, MyHome API/detail을 artifact로 추출
+        </div>
+        <div class="step">
+          <b>4. Normalize</b>
+          신청 가능한 단위인 Offering과 신청 일정으로 구조화
+        </div>
+        <div class="step">
+          <b>5. QA</b>
+          필수 도메인 필드와 중복 identity를 검증한 뒤 approved 승격
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>SH 결과</h2>
+      <p>
+        SH는 활성 청약 목록을 함께 조회해 게시판 페이징 한계를 보완했고,
+        rejected/unknown 공고는 normal archive에 저장하지 않는 대신 discovery seen cache로 반복 상세조회 비용을 줄이도록 정리했다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>seq</th>
+            <th>공고명</th>
+            <th>approved offerings</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>303584</td>
+            <td>2026년 전세임대형 든든주택 입주자 모집공고</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>303858</td>
+            <td>2026년 마곡 도전숙 입주자 모집 공고</td>
+            <td>4</td>
+          </tr>
+          <tr>
+            <td>304050</td>
+            <td>특화형 매입임대주택 금천구 청년형 모집 공고</td>
+            <td>1</td>
+          </tr>
+          <tr>
+            <td>304106</td>
+            <td>2026년 1차 희망하우징 잔여세대 입주자 모집공고</td>
+            <td>5</td>
+          </tr>
+          <tr>
+            <td>304271</td>
+            <td>2026년 위국헌신청년주택 입주자 모집공고</td>
+            <td>15</td>
+          </tr>
+          <tr>
+            <td>304295</td>
+            <td>2026년 휘경마을 두레주택 잔여세대 입주자 모집공고</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>304555</td>
+            <td>2026년 충신동 연극인두레주택 잔여세대 입주자 모집공고</td>
+            <td>2</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">
+        SH 최종 검증: <code>extracted_artifacts=66</code>,
+        <code>offerings=30</code>, <code>qa_approved=30</code>,
+        <code>qa_rejected=0</code>.
+      </p>
+    </section>
+
+    <section>
+      <h2>LH/MyHome 결과</h2>
+      <p>
+        LH는 SH와 별도인 MyHome 기반 독립 수집 경로로 구현했다.
+        API 기본 필드에서 신청기간, 공급기관, 공급유형, 주소, 단지명, 공급호수, 보증금, 월임대료를 구조화하고,
+        API만으로 부족한 항목은 상세 HTML과 공고문 PDF fallback을 통해 보완했다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>구분</th>
+            <th>결과</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>공공임대 rental</td>
+            <td>MyHome 3페이지, LH 408 raw items 처리, 최종 QA approved 374건</td>
+          </tr>
+          <tr>
+            <td>공공분양 sale</td>
+            <td>MyHome 1페이지, LH 51 items 처리, 최종 QA approved 누적 425건</td>
+          </tr>
+          <tr>
+            <td>전세임대 보강</td>
+            <td><code>suplyHoCo</code>, 상세 HTML의 지원한도액/임대조건을 사용해 승인 가능 데이터로 정규화</td>
+          </tr>
+          <tr>
+            <td>매입임대 PDF fallback</td>
+            <td>상세 HTML이 “공고문 확인”만 제공하는 2건은 PDF 원문을 보존하고 임대조건을 추출</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>PDF fallback으로 승격된 항목</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>seq</th>
+            <th>공고명</th>
+            <th>Offering</th>
+            <th>보증금</th>
+            <th>월임대료</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>20263</td>
+            <td>집주인 임대주택 예비입주자 모집공고</td>
+            <td>매입임대 다가구주택 4호</td>
+            <td>7,200,000원</td>
+            <td>432,000원</td>
+          </tr>
+          <tr>
+            <td>20295</td>
+            <td>장애인 자립특화형 주택 여기가 입주자 모집공고</td>
+            <td>매입임대 다가구주택 11호</td>
+            <td>7,930,000~9,031,000원</td>
+            <td>562,220~626,710원</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>핵심 수정 내역</h2>
+      <div class="two-col">
+        <div>
+          <h3>SH</h3>
+          <ul>
+            <li><code>source_span</code>을 로컬 object-root 경로에 덜 의존하도록 정리해 재수집 idempotency를 개선했다.</li>
+            <li>중복 pending/approved 충돌을 줄이도록 artifact/offering upsert와 QA 승격 흐름을 보강했다.</li>
+            <li>HWP 본문 추출 fallback을 추가해 마곡 도전숙 공고를 정규화했다.</li>
+            <li>두레주택/희망하우징/든든주택처럼 호실 단위가 아닌 공급호수형 신청 단위를 Offering으로 정리했다.</li>
+            <li>SH 활성 청약 목록을 함께 조회해 게시판 페이징 바깥의 신청 가능 공고 누락을 보완했다.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>LH</h3>
+          <ul>
+            <li>LH/MyHome API 수집을 SH와 독립된 경로로 추가했다.</li>
+            <li>분양 납부금액(<code>enty</code>, <code>prtpay</code>, <code>surlus</code>)을 QA 가능한 금액 필드로 매핑했다.</li>
+            <li><code>sumSuplyCo=0</code>인 전세임대는 <code>suplyHoCo</code> 문구에서 공급호수를 보정했다.</li>
+            <li>MyHome 상세 HTML에서 지원한도액, 임대보증금 조건, 월임대료 조건을 추출했다.</li>
+            <li>상세 HTML이 부족한 매입임대는 공고문 PDF를 다운로드/보존/추출해 fallback 정규화했다.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>주요 커밋</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>commit</th>
+            <th>내용</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>0d44cfa</code></td><td>SH discovery seen cache 추가</td></tr>
+          <tr><td><code>460cdaa</code></td><td>discovery seen cache TTL 검증</td></tr>
+          <tr><td><code>6e5fbf2</code></td><td>LH와 다중 포맷 정제 파이프라인 확장</td></tr>
+          <tr><td><code>3c6eb2c</code></td><td>SH HWP와 두레주택 정제 보강</td></tr>
+          <tr><td><code>c42bbbb</code></td><td>LH 분양 MyHome QA 정규화</td></tr>
+          <tr><td><code>8c09987</code></td><td>MyHome 상세 임대조건 QA 보강</td></tr>
+          <tr><td><code>1f6a601</code></td><td>MyHome 공고문 PDF fallback 추가</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>재현 명령</h2>
+      <pre><code>go test ./... -count=1
+
+go run . workflow collect-sh \
+  --board rental \
+  --pages 1 \
+  --dry-run=false \
+  --preserve-attachments \
+  --active-applications \
+  --active-sply-ty 12 \
+  --active-max-pages 10 \
+  --max-age-days 20 \
+  --object-root .data/objects-verification \
+  --skip-existing=true
+
+go run . workflow collect-lh \
+  --kind rental \
+  --num-rows 200 \
+  --all-pages \
+  --dry-run=false \
+  --agency-filter LH \
+  --fetch-details=true \
+  --object-root .data/objects-verification \
+  --service-key "$MYHOME_API_KEY"
+
+go run . workflow collect-lh \
+  --kind sale \
+  --num-rows 200 \
+  --all-pages \
+  --dry-run=false \
+  --agency-filter LH \
+  --fetch-details=true \
+  --object-root .data/objects-verification \
+  --service-key "$MYHOME_API_KEY"</code></pre>
+      <p class="note">
+        현재 로컬 <code>.env</code>에는 <code>MYHOME_API_KEY</code>가 없으므로,
+        검증 시에는 <code>LH_API.md</code>에 기록된 키를 <code>--service-key</code>로 전달했다.
+      </p>
+    </section>
+
+    <section>
+      <h2>운영 메모</h2>
+      <ul>
+        <li>비모집 공고, 당첨자 발표, 계약 안내, 접수 결과는 normal archive에 저장하지 않는 정책을 유지한다.</li>
+        <li>Serving/API는 <code>qa_status='approved'</code> 조건을 기본 필터로 사용한다.</li>
+        <li>MyHome 상세/PDF fallback은 API 필드만으로 QA가 어려운 항목에 한정해 실행한다.</li>
+        <li>LLM 정제는 이번 최종 검증에는 사용하지 않았다. 향후 사용 시 사용자 제한대로 최대 1500회 안에서 운영하면 된다.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
