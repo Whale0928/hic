@@ -3,20 +3,23 @@ package extraction
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 var (
-	wigukRowPattern        = regexp.MustCompile(`(?:(서울시|[가-힣]+구)\s+)?([0-9]+)\s+([0-9]{3,4})\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9,]+)\s+([0-9,]+)\s+([0-9,]+)\s+([0-9,]+)`)
-	districtAddressPattern = regexp.MustCompile(`서울특별시\s+([가-힣]+구)\s+([가-힣0-9]+동)\s+([0-9]+(?:-[0-9]+)?)\s+[0-9]+\s+호`)
-	vacancyPattern         = regexp.MustCompile(`([가-힣A-Za-z0-9_]+)\s+([0-9]{3,4})\s*호\s+([0-9]+(?:\.[0-9]+)?)\s*㎡\s+[0-9]+(?:\.[0-9]+)?\s*㎡\s+[0-9]+(?:\.[0-9]+)?\s*룸\s+([0-9,]+)\s+([0-9,]+)`)
-	seoulAddressPattern    = regexp.MustCompile(`서울시\s+[가-힣]+구\s+[가-힣0-9]+\s+[0-9]+\s+길\s+[0-9]+`)
-	moneyPattern           = regexp.MustCompile(`[0-9]+(?:,[0-9]{3})+`)
-	dureUnitPattern        = regexp.MustCompile(`\b(20[0-9])\s+([0-9]+(?:\.[0-9]+)?)\b`)
-	hopeHousingRowPattern  = regexp.MustCompile(`(내발산\s*공공기숙사|정릉\s*희망하우징|연남\s*공공원룸텔)\s*(원룸형\s*1\s*인실(?:\s*\([^)]+\))?)\s*([0-9]+(?:\.[0-9]+)?)\s*㎡?\s*((?:남성|여성)\s*[0-9]+\s*)+`)
-	hopeGenderCountPattern = regexp.MustCompile(`(남성|여성)\s*([0-9]+)`)
-	hopeAddressPattern     = regexp.MustCompile(`(내발산\s*공공기숙사|정릉\s*희망하우징|연남\s*공공원룸텔)\s*·?\s*주소\s*:\s*(서울특별시\s+[가-힣]+구\s+.*?)(?:\s+·|\s+주택명|\s+정릉\s*희망하우징|\s+연남\s*공공원룸텔|$)`)
-	hopeRentPattern        = regexp.MustCompile(`(내발산\s*공공기숙사|정릉\s*희망하우징|연남\s*공공원룸텔)\s*(-|[0-9,]+\s*원)\s+(-|[0-9,]+\s*원)\s+(-|[0-9,]+\s*원)`)
+	wigukRowPattern         = regexp.MustCompile(`(?:(서울시|[가-힣]+구)\s+)?([0-9]+)\s+([0-9]{3,4})\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9,]+)\s+([0-9,]+)\s+([0-9,]+)\s+([0-9,]+)`)
+	districtAddressPattern  = regexp.MustCompile(`서울특별시\s+([가-힣]+구)\s+([가-힣0-9]+동)\s+([0-9]+(?:-[0-9]+)?)\s+[0-9]+\s+호`)
+	vacancyPattern          = regexp.MustCompile(`([가-힣A-Za-z0-9_]+)\s+([0-9]{3,4})\s*호\s+([0-9]+(?:\.[0-9]+)?)\s*㎡\s+[0-9]+(?:\.[0-9]+)?\s*㎡\s+[0-9]+(?:\.[0-9]+)?\s*룸\s+([0-9,]+)\s+([0-9,]+)`)
+	seoulAddressPattern     = regexp.MustCompile(`서울시\s+[가-힣]+구\s+[가-힣0-9]+\s+[0-9]+\s+길\s+[0-9]+`)
+	moneyPattern            = regexp.MustCompile(`[0-9]+(?:,[0-9]{3})+`)
+	dureUnitPattern         = regexp.MustCompile(`\b(20[0-9])\s+([0-9]+(?:\.[0-9]+)?)\b`)
+	hopeHousingRowPattern   = regexp.MustCompile(`(내발산\s*공공기숙사|정릉\s*희망하우징|연남\s*공공원룸텔)\s*(원룸형\s*1\s*인실(?:\s*\([^)]+\))?)\s*([0-9]+(?:\.[0-9]+)?)\s*㎡?\s*((?:남성|여성)\s*[0-9]+\s*)+`)
+	hopeGenderCountPattern  = regexp.MustCompile(`(남성|여성)\s*([0-9]+)`)
+	hopeAddressPattern      = regexp.MustCompile(`(내발산\s*공공기숙사|정릉\s*희망하우징|연남\s*공공원룸텔)\s*·?\s*주소\s*:\s*(서울특별시\s+[가-힣]+구\s+.*?)(?:\s+·|\s+주택명|\s+정릉\s*희망하우징|\s+연남\s*공공원룸텔|$)`)
+	hopeRentPattern         = regexp.MustCompile(`(내발산\s*공공기숙사|정릉\s*희망하우징|연남\s*공공원룸텔)\s*(-|[0-9,]+\s*원)\s+(-|[0-9,]+\s*원)\s+(-|[0-9,]+\s*원)`)
+	jeonseLeaseCountPattern = regexp.MustCompile(`공급호수\s*[:：]\s*([0-9,]+)\s*호`)
+	koreanMoneyPattern      = regexp.MustCompile(`([0-9]+)\s*(억|�)\s*(?:(?:([0-9,]+)\s*만\s*원?)|(?:([0-9,]+)\s*만원)|원)`)
 )
 
 func ExtractPDFTableRowsFromText(text string, sourceSpan string) []ExtractedArtifact {
@@ -30,6 +33,7 @@ func ExtractPDFTableRowsFromText(text string, sourceSpan string) []ExtractedArti
 	rows = append(rows, extractVacancyRows(compact, sourceSpan)...)
 	rows = append(rows, extractDureHouseRows(compact, sourceSpan)...)
 	rows = append(rows, extractHopeHousingRows(compact, sourceSpan)...)
+	rows = append(rows, extractJeonseLeaseSupportRows(compact, sourceSpan)...)
 	rows = append(rows, extractLongTermJeonseRows(compact, sourceSpan)...)
 	return rows
 }
@@ -214,6 +218,129 @@ func canonicalHopeHousingName(value string) string {
 	default:
 		return compactPDFText(value)
 	}
+}
+
+func extractJeonseLeaseSupportRows(text string, sourceSpan string) []ExtractedArtifact {
+	if !strings.Contains(text, "전세임대형 든든주택") || !strings.Contains(text, "공급호수") {
+		return nil
+	}
+	countMatch := jeonseLeaseCountPattern.FindStringSubmatch(text)
+	if len(countMatch) < 2 {
+		return nil
+	}
+	supplyCount := strings.ReplaceAll(countMatch[1], ",", "")
+	supportSection := sectionBetween(text, "지원금액", "월 임대료")
+	if supportSection == "" {
+		supportSection = text
+	}
+	amounts := extractKoreanMoneyAmounts(supportSection)
+	supportStandard := firstPositiveAmount(amounts)
+	guaranteeLimit := maxAmount(amounts)
+	if guaranteeLimit == 0 && supportStandard > 0 {
+		guaranteeLimit = supportStandard * 3 / 2
+	}
+	maxSupport := int64(0)
+	tenantContribution := int64(0)
+	if supportStandard > 0 {
+		maxSupport = supportStandard * 8 / 10
+		tenantContribution = supportStandard * 2 / 10
+	}
+
+	address := "서울특별시"
+	if strings.Contains(text, "서울특별시 전 지역") {
+		address = "서울특별시 전 지역"
+	}
+	housingName := "전세임대형 든든주택"
+	row := map[string]any{
+		"source":                 "pdf_table_jeonse_lease_support",
+		"housing_name":           housingName,
+		"address":                address,
+		"supply_method":          "전세임대",
+		"supply_count":           supplyCount,
+		"application_unit_label": buildApplicationUnitLabel(housingName, address, supplyCount+"호"),
+	}
+	if guaranteeLimit > 0 {
+		row["jeonse_deposit_text"] = "보증금한도액 " + formatKRWAmount(guaranteeLimit) + "원"
+	}
+	if tenantContribution > 0 {
+		row["contract_deposit_text"] = "입주자부담금 " + formatKRWAmount(tenantContribution) + "원"
+	}
+	if maxSupport > 0 {
+		row["balance_payment_text"] = "최대지원금액 " + formatKRWAmount(maxSupport) + "원"
+	}
+	return []ExtractedArtifact{
+		pdfTableRowArtifact(sourceSpan, "jeonse_lease_support", 1, countMatch[0], row),
+	}
+}
+
+func extractKoreanMoneyAmounts(text string) []int64 {
+	matches := koreanMoneyPattern.FindAllStringSubmatch(text, -1)
+	amounts := make([]int64, 0, len(matches))
+	for _, match := range matches {
+		eok, err := strconv.ParseInt(strings.ReplaceAll(match[1], ",", ""), 10, 64)
+		if err != nil {
+			continue
+		}
+		if eok > 30 {
+			continue
+		}
+		amount := eok * 100000000
+		manwon := firstNonEmptyString(match[3], match[4])
+		if manwon != "" {
+			value, err := strconv.ParseInt(strings.ReplaceAll(manwon, ",", ""), 10, 64)
+			if err == nil {
+				amount += value * 10000
+			}
+		}
+		amounts = append(amounts, amount)
+	}
+	return amounts
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func firstPositiveAmount(amounts []int64) int64 {
+	for _, amount := range amounts {
+		if amount > 0 {
+			return amount
+		}
+	}
+	return 0
+}
+
+func maxAmount(amounts []int64) int64 {
+	var max int64
+	for _, amount := range amounts {
+		if amount > max {
+			max = amount
+		}
+	}
+	return max
+}
+
+func formatKRWAmount(value int64) string {
+	raw := strconv.FormatInt(value, 10)
+	if len(raw) <= 3 {
+		return raw
+	}
+	var b strings.Builder
+	prefix := len(raw) % 3
+	if prefix == 0 {
+		prefix = 3
+	}
+	b.WriteString(raw[:prefix])
+	for i := prefix; i < len(raw); i += 3 {
+		b.WriteByte(',')
+		b.WriteString(raw[i : i+3])
+	}
+	return b.String()
 }
 
 func extractLongTermJeonseRows(text string, sourceSpan string) []ExtractedArtifact {
