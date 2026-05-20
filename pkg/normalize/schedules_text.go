@@ -10,8 +10,9 @@ import (
 )
 
 var applicationSchedulePattern = regexp.MustCompile(`(?s)(청약신청\s*접수기간|신청\s*접수|신청접수|접수기간)\s*[:：]?\s*([0-9]{4})\s*[.\-/년]\s*([0-9]{1,2})\s*[.\-/월]\s*([0-9]{1,2})\s*[.\-/일]?\s*(?:\([^)]*\))?\s*(?:(\d{1,2})\s*:\s*(\d{2}))?\s*(?:부터)?\s*[~∼-]\s*([0-9]{4})\s*[.\-/년]\s*([0-9]{1,2})\s*[.\-/월]\s*([0-9]{1,2})\s*[.\-/일]?\s*(?:\([^)]*\))?\s*(?:(\d{1,2})\s*:\s*(\d{2}))?`)
-var procedureDatePattern = regexp.MustCompile("[‘'`]?([0-9]{2,4})\\s*[.]\\s*([0-9]{1,2})\\s*[.]\\s*([0-9]{1,2})\\s*[.]?\\s*(?:\\([^)]*\\))?\\s*(?:[~∼-]\\s*[‘'`]?(?:([0-9]{2,4})\\s*[.]\\s*)?([0-9]{1,2})\\s*[.]\\s*([0-9]{1,2})\\s*[.]?\\s*(?:\\([^)]*\\))?)?")
+var procedureDatePattern = regexp.MustCompile("[‘'`]?([0-9]{2,4})\\s*[.]\\s*([0-9]{1,2})\\s*[.]\\s*([0-9]{1,2})\\s*[.]?\\s*(?:\\([^)]*\\))?\\s*(?:(\\d{1,2})\\s*:\\s*(\\d{2}))?\\s*(?:[~∼-]\\s*[‘'`]?(?:([0-9]{2,4})\\s*[.]\\s*)?([0-9]{1,2})\\s*[.]\\s*([0-9]{1,2})\\s*[.]?\\s*(?:\\([^)]*\\))?\\s*(?:(\\d{1,2})\\s*:\\s*(\\d{2}))?)?")
 var firstDateMarkerPattern = regexp.MustCompile("[‘'`]?[0-9]{2,4}\\s*[.]\\s*[0-9]{1,2}\\s*[.]\\s*[0-9]{1,2}")
+var procedureLabelSeparatorPattern = regexp.MustCompile("[▶➤]")
 
 func InferSchedulesFromTextArtifacts(artifacts []extraction.ExtractedArtifact, noticeID int64) []NoticeScheduleCandidate {
 	var schedules []NoticeScheduleCandidate
@@ -71,7 +72,7 @@ func inferApplicationSchedulesFromText(artifact extraction.ExtractedArtifact, no
 }
 
 func inferProcedureTableApplicationSchedule(artifact extraction.ExtractedArtifact, noticeID int64, text string) []NoticeScheduleCandidate {
-	startIndex := strings.Index(text, "공급절차 및 일정")
+	startIndex := procedureScheduleStartIndex(text)
 	if startIndex < 0 {
 		return nil
 	}
@@ -115,9 +116,20 @@ func inferProcedureTableApplicationSchedule(artifact extraction.ExtractedArtifac
 	return nil
 }
 
+func procedureScheduleStartIndex(text string) int {
+	markers := []string{"공급절차 및 일정", "■ 공급일정"}
+	for _, marker := range markers {
+		if index := strings.Index(text, marker); index >= 0 {
+			return index
+		}
+	}
+	return -1
+}
+
 func procedureLabels(text string) []string {
 	text = strings.TrimSpace(strings.TrimPrefix(text, "공급절차 및 일정"))
-	parts := strings.Split(text, "▶")
+	text = strings.TrimSpace(strings.TrimPrefix(text, "■ 공급일정"))
+	parts := procedureLabelSeparatorPattern.Split(text, -1)
 	labels := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
@@ -130,20 +142,20 @@ func procedureLabels(text string) []string {
 
 func procedureDateRange(match []string) (time.Time, time.Time, bool) {
 	startYear := normalizeScheduleYear(match[1])
-	start, okStart := scheduleTime(strconv.Itoa(startYear), match[2], match[3], "", "", false)
+	start, okStart := scheduleTime(strconv.Itoa(startYear), match[2], match[3], match[4], match[5], false)
 	if !okStart {
 		return time.Time{}, time.Time{}, false
 	}
 	endYear := startYear
-	endMonth := match[5]
-	endDay := match[6]
-	if match[4] != "" {
-		endYear = normalizeScheduleYear(match[4])
+	endMonth := match[7]
+	endDay := match[8]
+	if match[6] != "" {
+		endYear = normalizeScheduleYear(match[6])
 	}
 	if endMonth == "" || endDay == "" {
 		return start, time.Date(startYear, time.Month(start.Month()), start.Day(), 23, 59, 59, 0, time.Local), true
 	}
-	end, okEnd := scheduleTime(strconv.Itoa(endYear), endMonth, endDay, "", "", true)
+	end, okEnd := scheduleTime(strconv.Itoa(endYear), endMonth, endDay, match[9], match[10], true)
 	return start, end, okEnd
 }
 
