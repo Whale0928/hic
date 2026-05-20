@@ -1066,6 +1066,48 @@ func (r *Repository) ExistingNoticeSeqs(ctx context.Context, agency string, boar
 	return known, nil
 }
 
+func (r *Repository) ExistingNoticeCandidates(ctx context.Context, agency string, boardKind string) ([]discovery.Candidate, map[string]int64, error) {
+	rows, err := r.pool.Query(ctx, `
+select id, seq, title, posted_at
+from source_notices
+where agency = $1
+	and board_kind = $2
+	and category = 'recruitment'
+`, agency, boardKind)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var candidates []discovery.Candidate
+	idsBySeq := make(map[string]int64)
+	for rows.Next() {
+		var id int64
+		var seq string
+		var title string
+		var postedAt time.Time
+		if err := rows.Scan(&id, &seq, &title, &postedAt); err != nil {
+			return nil, nil, err
+		}
+		seq = strings.TrimSpace(seq)
+		if seq == "" {
+			continue
+		}
+		idsBySeq[seq] = id
+		candidates = append(candidates, discovery.Candidate{
+			Agency:    agency,
+			BoardKind: boardKind,
+			Seq:       seq,
+			Title:     title,
+			PostedAt:  postedAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return candidates, idsBySeq, nil
+}
+
 func (r *Repository) PromoteOfferingsQA(ctx context.Context) (QASummary, error) {
 	if err := r.queries.PromoteOfferingsQA(ctx); err != nil {
 		return QASummary{}, err

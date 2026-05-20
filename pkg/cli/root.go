@@ -964,6 +964,14 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 					return err
 				}
 			}
+			var existingCandidates []discovery.Candidate
+			existingNoticeIDBySeq := make(map[string]int64)
+			if activeApplications && skipExisting && strings.TrimSpace(seqs) == "" {
+				existingCandidates, existingNoticeIDBySeq, err = repo.ExistingNoticeCandidates(cmd.Context(), board.Agency, board.BoardKind)
+				if err != nil {
+					return err
+				}
+			}
 			var seenCache map[string]discovery.SeenCacheEntry
 			if discoveryCache && strings.TrimSpace(seqs) == "" {
 				seenCache, err = repo.FreshDiscoverySeenCache(cmd.Context(), board.Agency, board.BoardKind, time.Now())
@@ -993,7 +1001,9 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), report.String())
-			reconcileResult := shdiscovery.ReconcileApplications(applications, report.Candidates)
+			reconcileCandidates := append([]discovery.Candidate{}, existingCandidates...)
+			reconcileCandidates = append(reconcileCandidates, report.Candidates...)
+			reconcileResult := shdiscovery.ReconcileApplications(applications, reconcileCandidates)
 			if activeApplications {
 				fmt.Fprintf(cmd.OutOrStdout(), "active_applications=%d linked=%d unmatched=%d\n", len(applications), len(reconcileResult.Linked), len(reconcileResult.UnmatchedApplications))
 				writeSHApplicationLinks(cmd.OutOrStdout(), reconcileResult)
@@ -1012,6 +1022,9 @@ func newWorkflowCollectSHCommand() *cobra.Command {
 			objectStore := extraction.NewLocalObjectStore(objectRoot)
 			collector := workflow.NewCollector(workflow.NewSHAttachmentFetcher(), objectStore)
 			noticeIDBySeq := make(map[string]int64, len(report.Candidates))
+			for seq, noticeID := range existingNoticeIDBySeq {
+				noticeIDBySeq[seq] = noticeID
+			}
 			for _, candidate := range report.Candidates {
 				preserveReport, err := collector.PreserveCandidateAttachments(cmd.Context(), board, candidate)
 				if err != nil {
@@ -1212,6 +1225,8 @@ func normalizeOfferingsFromArtifacts(kind extraction.AttachmentKind, artifacts [
 		}
 		offerings = append(offerings, normalize.InferOfferingsFromPDFTableRows(artifacts)...)
 		return offerings
+	case extraction.AttachmentKindNoticeHWP:
+		return normalize.InferOfferingsFromPDFTableRows(artifacts)
 	default:
 		return nil
 	}

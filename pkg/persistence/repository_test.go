@@ -142,6 +142,27 @@ func TestRepository_ApplicationNotice_테스트별클린DB에서UpsertLink한다
 	}
 }
 
+func TestRepository_ExistingNoticeCandidates_저장된모집공고를Reconcile후보로반환한다(t *testing.T) {
+	repo := openCleanTestRepository(t)
+	ctx := context.Background()
+	noticeID := insertSourceNoticeFixture(t, repo, "303584", "2026년 전세임대형 든든주택 입주자 모집공고(2026.04.29.)")
+
+	candidates, idsBySeq, err := repo.ExistingNoticeCandidates(ctx, "SH", "rental")
+	if err != nil {
+		t.Fatalf("ExistingNoticeCandidates() error = %v", err)
+	}
+
+	if len(candidates) != 1 {
+		t.Fatalf("len(candidates) = %d, want 1", len(candidates))
+	}
+	if candidates[0].Seq != "303584" || candidates[0].Title == "" {
+		t.Fatalf("candidate = %+v", candidates[0])
+	}
+	if idsBySeq["303584"] != noticeID {
+		t.Fatalf("idsBySeq[303584] = %d, want %d", idsBySeq["303584"], noticeID)
+	}
+}
+
 func TestRepository_DiscoverySeenCache_테스트별클린DB에서FreshCache를조회한다(t *testing.T) {
 	repo := openCleanTestRepository(t)
 	ctx := context.Background()

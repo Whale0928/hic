@@ -20,6 +20,11 @@ var (
 	hopeRentPattern         = regexp.MustCompile(`(내발산\s*공공기숙사|정릉\s*희망하우징|연남\s*공공원룸텔)\s*(-|[0-9,]+\s*원)\s+(-|[0-9,]+\s*원)\s+(-|[0-9,]+\s*원)`)
 	jeonseLeaseCountPattern = regexp.MustCompile(`공급호수\s*[:：]\s*([0-9,]+)\s*호`)
 	koreanMoneyPattern      = regexp.MustCompile(`([0-9]+)\s*(억|�)\s*(?:(?:([0-9,]+)\s*만\s*원?)|(?:([0-9,]+)\s*만원)|원)`)
+	chungshinGroupStart     = regexp.MustCompile(`([0-9]+)\s*호점\s+종로구\s+충신동\s+([0-9]+-[0-9]+)`)
+	chungshinSupplyCount    = regexp.MustCompile(`^\s*([0-9]+)\s*호\s+`)
+	chungshinRentRow        = regexp.MustCompile(`([0-9]{3,4})\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9,]+)\s+([0-9,]+)`)
+	magokSupplyTypePattern  = regexp.MustCompile(`^([0-9]+)㎡형$`)
+	magokUnitTypePattern    = regexp.MustCompile(`^[A-Z][0-9]?형$`)
 )
 
 func ExtractPDFTableRowsFromText(text string, sourceSpan string) []ExtractedArtifact {
@@ -32,7 +37,9 @@ func ExtractPDFTableRowsFromText(text string, sourceSpan string) []ExtractedArti
 	rows = append(rows, extractWigukUnitConditionRows(compact, sourceSpan)...)
 	rows = append(rows, extractVacancyRows(compact, sourceSpan)...)
 	rows = append(rows, extractDureHouseRows(compact, sourceSpan)...)
+	rows = append(rows, extractChungshinTheaterDureRows(compact, sourceSpan)...)
 	rows = append(rows, extractHopeHousingRows(compact, sourceSpan)...)
+	rows = append(rows, extractMagokChallengeHouseRows(compact, sourceSpan)...)
 	rows = append(rows, extractJeonseLeaseSupportRows(compact, sourceSpan)...)
 	rows = append(rows, extractLongTermJeonseRows(compact, sourceSpan)...)
 	return rows
@@ -138,6 +145,366 @@ func extractDureHouseRows(text string, sourceSpan string) []ExtractedArtifact {
 		rows = append(rows, pdfTableRowArtifact(sourceSpan, "dure_rent_options", len(rows)+1, match[0], row))
 	}
 	return rows
+}
+
+type chungshinSupplyInfo struct {
+	address     string
+	gender      string
+	supplyCount string
+}
+
+func extractChungshinTheaterDureRows(text string, sourceSpan string) []ExtractedArtifact {
+	if !strings.Contains(text, "충신동 연극인 두레주택") || !strings.Contains(text, "호점 내 호실은 선택 불가") || !strings.Contains(text, "임대보증금 및 월임대료") {
+		return nil
+	}
+
+	supplyByHojum := extractChungshinSupplyInfo(text)
+	rentSection := sectionBetween(text, "임대보증금 및 월임대료", "○ 임대보증금")
+	if rentSection == "" {
+		rentSection = sectionBetween(text, "임대보증금 및 월임대료", "")
+	}
+
+	var rows []ExtractedArtifact
+	for _, group := range splitChungshinGroups(rentSection) {
+		hojum := group.hojum
+		address := group.address
+		unitRows := parseChungshinRentRows(group.body)
+		if len(unitRows) == 0 {
+			continue
+		}
+		info := supplyByHojum[hojum]
+		if info.address != "" {
+			address = info.address
+		}
+		gender := firstNonEmptyString(info.gender, detectChungshinGender(text, hojum))
+		supplyCount := firstNonEmptyString(info.supplyCount, strconv.Itoa(len(unitRows)))
+		depositText := formatKRWRange(unitRows[0].depositValue, unitRows[0].depositValue)
+		minRent, maxRent := rentRange(unitRows)
+		row := map[string]any{
+			"source":                 "pdf_table_chungshin_theater_dure_gender_supply",
+			"housing_name":           "충신동 연극인 두레주택",
+			"address":                address,
+			"supply_method":          "잔여세대",
+			"supply_category":        "잔여세대",
+			"application_category":   gender,
+			"gender_requirement":     gender,
+			"supply_count":           supplyCount,
+			"occupancy_type":         "셰어하우스",
+			"deposit_text":           depositText,
+			"monthly_rent_text":      formatKRWRange(minRent, maxRent),
+			"application_unit_label": buildApplicationUnitLabel("충신동 연극인 두레주택", hojum+"호점", gender),
+			"unit_rows":              chungshinUnitRowsForContent(unitRows),
+		}
+		rows = append(rows, pdfTableRowArtifact(sourceSpan, "chungshin_theater_dure_gender_supply", len(rows)+1, group.rawText, row))
+	}
+	return rows
+}
+
+func extractChungshinSupplyInfo(text string) map[string]chungshinSupplyInfo {
+	section := sectionBetween(text, "금회 공급대상", "나 . 임대보증금")
+	if section == "" {
+		section = sectionBetween(text, "공급대상 ( 호점 )", "임대보증금 및 월임대료")
+	}
+	out := make(map[string]chungshinSupplyInfo)
+	for _, group := range splitChungshinGroups(section) {
+		block := group.body
+		supplyCount := ""
+		if countMatch := chungshinSupplyCount.FindStringSubmatch(block); len(countMatch) == 2 {
+			supplyCount = countMatch[1]
+			block = strings.TrimSpace(strings.TrimPrefix(block, countMatch[0]))
+		}
+		hojum := group.hojum
+		out[hojum] = chungshinSupplyInfo{
+			address:     group.address,
+			gender:      detectGenderInText(block),
+			supplyCount: supplyCount,
+		}
+	}
+	return out
+}
+
+type chungshinGroup struct {
+	hojum   string
+	address string
+	body    string
+	rawText string
+}
+
+func splitChungshinGroups(section string) []chungshinGroup {
+	matches := chungshinGroupStart.FindAllStringSubmatchIndex(section, -1)
+	groups := make([]chungshinGroup, 0, len(matches))
+	for i, match := range matches {
+		end := len(section)
+		if i+1 < len(matches) {
+			end = matches[i+1][0]
+		}
+		rawText := strings.TrimSpace(section[match[0]:end])
+		body := strings.TrimSpace(section[match[1]:end])
+		if marker := strings.Index(body, " ○ "); marker >= 0 {
+			body = strings.TrimSpace(body[:marker])
+			rawText = strings.TrimSpace(section[match[0] : match[1]+marker])
+		}
+		if marker := strings.Index(body, " 동일호점 "); marker >= 0 {
+			body = strings.TrimSpace(body[:marker])
+			rawText = strings.TrimSpace(section[match[0] : match[1]+marker])
+		}
+		if marker := strings.Index(body, " 남성은 "); marker >= 0 {
+			body = strings.TrimSpace(body[:marker])
+			rawText = strings.TrimSpace(section[match[0] : match[1]+marker])
+		}
+		groups = append(groups, chungshinGroup{
+			hojum:   section[match[2]:match[3]],
+			address: "서울특별시 종로구 충신동 " + section[match[4]:match[5]],
+			body:    body,
+			rawText: rawText,
+		})
+	}
+	return groups
+}
+
+type chungshinRentUnit struct {
+	unitNo       string
+	area         string
+	depositText  string
+	rentText     string
+	depositValue int64
+	rentValue    int64
+}
+
+func parseChungshinRentRows(text string) []chungshinRentUnit {
+	var rows []chungshinRentUnit
+	for _, match := range chungshinRentRow.FindAllStringSubmatch(text, -1) {
+		depositValue, ok := parseKRWToken(match[3])
+		if !ok {
+			continue
+		}
+		rentValue, ok := parseKRWToken(match[4])
+		if !ok {
+			continue
+		}
+		rows = append(rows, chungshinRentUnit{
+			unitNo:       match[1],
+			area:         match[2],
+			depositText:  match[3],
+			rentText:     match[4],
+			depositValue: depositValue,
+			rentValue:    rentValue,
+		})
+	}
+	return rows
+}
+
+func rentRange(rows []chungshinRentUnit) (int64, int64) {
+	if len(rows) == 0 {
+		return 0, 0
+	}
+	minRent := rows[0].rentValue
+	maxRent := rows[0].rentValue
+	for _, row := range rows[1:] {
+		if row.rentValue < minRent {
+			minRent = row.rentValue
+		}
+		if row.rentValue > maxRent {
+			maxRent = row.rentValue
+		}
+	}
+	return minRent, maxRent
+}
+
+func parseKRWToken(text string) (int64, bool) {
+	value, err := strconv.ParseInt(strings.ReplaceAll(text, ",", ""), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return value, true
+}
+
+func formatKRWRange(minValue int64, maxValue int64) string {
+	if minValue <= 0 {
+		return ""
+	}
+	if maxValue <= 0 || minValue == maxValue {
+		return formatKRWAmount(minValue) + "원"
+	}
+	return formatKRWAmount(minValue) + "~" + formatKRWAmount(maxValue) + "원"
+}
+
+func detectChungshinGender(text string, hojum string) string {
+	switch hojum {
+	case "4":
+		if strings.Contains(text, "남성은 자동으로 4호점") || strings.Contains(text, "남성은 자동으로 4 호점") {
+			return "남성"
+		}
+	case "5":
+		if strings.Contains(text, "여성은 자동으로 5호점") || strings.Contains(text, "여성은 자동으로 5 호점") {
+			return "여성"
+		}
+	}
+	return ""
+}
+
+func detectGenderInText(text string) string {
+	if strings.Contains(text, "남성") {
+		return "남성"
+	}
+	if strings.Contains(text, "여성") {
+		return "여성"
+	}
+	return ""
+}
+
+func chungshinUnitRowsForContent(rows []chungshinRentUnit) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, map[string]any{
+			"unit_no":           row.unitNo,
+			"exclusive_area_m2": row.area,
+			"deposit_text":      row.depositText,
+			"monthly_rent_text": row.rentText,
+		})
+	}
+	return out
+}
+
+type magokSupplyGroup struct {
+	supplyType string
+	category   string
+	count      int
+	depositKRW int64
+	rentKRW    int64
+	unitRows   []map[string]any
+}
+
+func extractMagokChallengeHouseRows(text string, sourceSpan string) []ExtractedArtifact {
+	if !strings.Contains(text, "마곡 도전숙") || !strings.Contains(text, "공급현황") || !strings.Contains(text, "공급유형별 면적 및 임대료") {
+		return nil
+	}
+	section := sectionBetween(text, "공급유형 주택유형", "세대 내 옵션")
+	if section == "" {
+		section = sectionBetween(text, "공급유형 주택유형", "임대 금액 상세")
+	}
+	if section == "" {
+		return nil
+	}
+	groups := parseMagokSupplyGroups(section)
+	rows := make([]ExtractedArtifact, 0, len(groups))
+	for _, group := range groups {
+		label := buildApplicationUnitLabel("마곡 도전숙", group.supplyType, group.category)
+		row := map[string]any{
+			"source":                 "hwp_text_magok_challenge_house_supply",
+			"housing_name":           "마곡 도전숙",
+			"supply_method":          "일자리연계형 지원주택",
+			"supply_category":        "일자리연계형 지원주택",
+			"application_category":   group.category,
+			"application_unit_label": label,
+			"supply_count":           strconv.Itoa(group.count),
+			"exclusive_area_m2":      strings.TrimSuffix(group.supplyType, "㎡형"),
+			"deposit_text":           formatKRWAmount(group.depositKRW) + "원",
+			"monthly_rent_text":      formatKRWAmount(group.rentKRW) + "원",
+			"unit_rows":              group.unitRows,
+		}
+		rows = append(rows, pdfTableRowArtifact(sourceSpan, "magok_challenge_house_supply", len(rows)+1, label, row))
+	}
+	return rows
+}
+
+func parseMagokSupplyGroups(section string) []magokSupplyGroup {
+	tokens := strings.Fields(section)
+	groupsByType := make(map[string]*magokSupplyGroup)
+	var order []string
+	currentSupplyType := ""
+	var currentDepositKRW int64
+	var currentRentKRW int64
+
+	for i := 0; i < len(tokens); i++ {
+		token := cleanToken(tokens[i])
+		if match := magokSupplyTypePattern.FindStringSubmatch(token); len(match) == 2 {
+			currentSupplyType = token
+			currentDepositKRW = 0
+			currentRentKRW = 0
+			if i+1 >= len(tokens) {
+				continue
+			}
+			unitType := cleanToken(tokens[i+1])
+			if !magokUnitTypePattern.MatchString(unitType) {
+				continue
+			}
+			next, ok := parseMagokUnitRow(tokens, i+2, currentSupplyType, unitType, &currentDepositKRW, &currentRentKRW, groupsByType, &order)
+			if ok {
+				i = next - 1
+			}
+			continue
+		}
+		if currentSupplyType == "" || !magokUnitTypePattern.MatchString(token) {
+			continue
+		}
+		next, ok := parseMagokUnitRow(tokens, i+1, currentSupplyType, token, &currentDepositKRW, &currentRentKRW, groupsByType, &order)
+		if ok {
+			i = next - 1
+		}
+	}
+
+	out := make([]magokSupplyGroup, 0, len(order))
+	for _, supplyType := range order {
+		group := groupsByType[supplyType]
+		if group != nil && group.count > 0 && group.depositKRW > 0 && group.rentKRW > 0 {
+			out = append(out, *group)
+		}
+	}
+	return out
+}
+
+func parseMagokUnitRow(tokens []string, start int, supplyType string, unitType string, currentDepositKRW *int64, currentRentKRW *int64, groupsByType map[string]*magokSupplyGroup, order *[]string) (int, bool) {
+	i := start
+	category := ""
+	if i < len(tokens) && strings.Contains(tokens[i], "주거약자") {
+		category = "주거약자"
+		i++
+	}
+	if i >= len(tokens) || !looksLikeCountToken(cleanToken(tokens[i])) {
+		return start, false
+	}
+	count, err := strconv.Atoi(cleanToken(tokens[i]))
+	if err != nil {
+		return start, false
+	}
+	i++
+	depositKRW := *currentDepositKRW
+	rentKRW := *currentRentKRW
+	if i+1 < len(tokens) && moneyPattern.MatchString(cleanToken(tokens[i])) && moneyPattern.MatchString(cleanToken(tokens[i+1])) {
+		if deposit, ok := parseKRWToken(cleanToken(tokens[i])); ok {
+			depositKRW = deposit * 1000
+			*currentDepositKRW = depositKRW
+		}
+		if rent, ok := parseKRWToken(cleanToken(tokens[i+1])); ok {
+			rentKRW = rent
+			*currentRentKRW = rentKRW
+		}
+		i += 2
+	}
+	if depositKRW == 0 || rentKRW == 0 || i >= len(tokens) || !looksLikeArea(cleanToken(tokens[i])) {
+		return start, false
+	}
+	area := cleanToken(tokens[i])
+	i++
+	group := groupsByType[supplyType]
+	if group == nil {
+		group = &magokSupplyGroup{supplyType: supplyType, depositKRW: depositKRW, rentKRW: rentKRW}
+		groupsByType[supplyType] = group
+		*order = append(*order, supplyType)
+	}
+	if category != "" {
+		group.category = category
+	}
+	group.count += count
+	group.unitRows = append(group.unitRows, map[string]any{
+		"unit_type":         unitType,
+		"supply_count":      strconv.Itoa(count),
+		"exclusive_area_m2": area,
+		"deposit_text":      formatKRWAmount(depositKRW) + "원",
+		"monthly_rent_text": formatKRWAmount(rentKRW) + "원",
+	})
+	return i, true
 }
 
 func extractHopeHousingRows(text string, sourceSpan string) []ExtractedArtifact {

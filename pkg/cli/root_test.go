@@ -458,6 +458,29 @@ func TestNormalizeOfferingsFromArtifacts_PDF신청주택표를정규화한다(t 
 	}
 }
 
+func TestNormalizeOfferingsFromArtifacts_HWP표행을정규화한다(t *testing.T) {
+	offerings := normalizeOfferingsFromArtifacts(extraction.AttachmentKindNoticeHWP, []extraction.ExtractedArtifact{{
+		Type:       extraction.ArtifactTypePDFTableRow,
+		SourceSpan: "object://hic-originals/sh/303858/7-notice.hwp#table=magok_challenge_house_supply&row=1",
+		Content: map[string]any{
+			"source":                 "hwp_text_magok_challenge_house_supply",
+			"housing_name":           "마곡 도전숙",
+			"application_unit_label": "마곡 도전숙 21㎡형",
+			"supply_count":           "159",
+			"exclusive_area_m2":      "21",
+			"deposit_text":           "78,480,000원",
+			"monthly_rent_text":      "301,000원",
+		},
+	}})
+
+	if len(offerings) != 1 {
+		t.Fatalf("normalizeOfferingsFromArtifacts() len = %d, want 1", len(offerings))
+	}
+	if offerings[0].ApplicationUnitLabel != "마곡 도전숙 21㎡형" || offerings[0].SupplyCount == nil || *offerings[0].SupplyCount != 159 {
+		t.Fatalf("offering = %+v", offerings[0])
+	}
+}
+
 func TestNewRootCommand_ExtractXLSX_Artifact개수를출력한다(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "offerings.xlsx")
 	f := excelize.NewFile()

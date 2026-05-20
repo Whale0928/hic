@@ -131,3 +131,49 @@ func TestInferOfferingsFromPDFTableRows_동호수없는전세임대공급호수�
 		t.Fatalf("BalancePaymentKRW = %v, want 160000000", got.BalancePaymentKRW)
 	}
 }
+
+func TestInferOfferingsFromPDFTableRows_성별호점단위는UnitNo없이공급호수로변환한다(t *testing.T) {
+	artifacts := []extraction.ExtractedArtifact{
+		{
+			Type:       extraction.ArtifactTypePDFTableRow,
+			SourceRow:  1,
+			SourceSpan: "object://hic-originals/sh/304555/1-notice.pdf#table=chungshin_theater_dure_gender_supply&row=1",
+			Content: map[string]any{
+				"source":                 "pdf_table_chungshin_theater_dure_gender_supply",
+				"housing_name":           "충신동 연극인 두레주택",
+				"application_unit_label": "충신동 연극인 두레주택 4호점 남성",
+				"address":                "서울특별시 종로구 충신동 1-136",
+				"gender_requirement":     "남성",
+				"supply_count":           "3",
+				"deposit_text":           "1,090,000원",
+				"monthly_rent_text":      "147,200~162,500원",
+			},
+			Confidence: 0.78,
+		},
+	}
+
+	offerings := InferOfferingsFromPDFTableRows(artifacts)
+
+	if len(offerings) != 1 {
+		t.Fatalf("InferOfferingsFromPDFTableRows() len = %d, want 1", len(offerings))
+	}
+	got := offerings[0]
+	if got.UnitNo != "" {
+		t.Fatalf("UnitNo = %q, want empty", got.UnitNo)
+	}
+	if got.SupplyCount == nil || *got.SupplyCount != 3 {
+		t.Fatalf("SupplyCount = %v, want 3", got.SupplyCount)
+	}
+	if got.ApplicationUnitLabel != "충신동 연극인 두레주택 4호점 남성" {
+		t.Fatalf("ApplicationUnitLabel = %q", got.ApplicationUnitLabel)
+	}
+	if got.GenderRequirement != "남성" {
+		t.Fatalf("GenderRequirement = %q", got.GenderRequirement)
+	}
+	if got.DepositKRW == nil || *got.DepositKRW != 1090000 {
+		t.Fatalf("DepositKRW = %v, want 1090000", got.DepositKRW)
+	}
+	if got.MonthlyRentKRW == nil || *got.MonthlyRentKRW != 147200 {
+		t.Fatalf("MonthlyRentKRW = %v, want 147200", got.MonthlyRentKRW)
+	}
+}

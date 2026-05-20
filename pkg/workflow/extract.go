@@ -28,7 +28,7 @@ func ExtractPreservedAttachment(objectStore extraction.LocalObjectStore, attachm
 		if strings.EqualFold(filepath.Ext(firstNonEmpty(attachment.Filename, attachment.ObjectKey)), ".hwpx") {
 			return singleArtifact(extraction.ExtractHWPXTextWithSource(path, sourceSpan))
 		}
-		return singleArtifact(extraction.ExtractHWPTextWithSource(path, sourceSpan))
+		return extraction.ExtractHWPArtifactsWithSource(path, sourceSpan)
 	default:
 		return nil, nil
 	}
