@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"hic/pkg/availability"
 	"hic/pkg/discovery"
 	lhdiscovery "hic/pkg/discovery/lh"
 	"hic/pkg/extraction"
@@ -131,6 +133,27 @@ type ScheduleView struct {
 	Note         string `json:"note"`
 	SourceText   string `json:"source_text"`
 	SourceSpan   string `json:"source_span"`
+}
+
+type AvailabilityView struct {
+	NoticeID          int64  `json:"notice_id"`
+	Agency            string `json:"agency"`
+	BoardKind         string `json:"board_kind"`
+	Seq               string `json:"seq"`
+	Title             string `json:"title"`
+	Status            string `json:"status"`
+	Source            string `json:"source"`
+	ScheduleStatus    string `json:"schedule_status"`
+	ApplicationStatus string `json:"application_status"`
+	Conflict          bool   `json:"conflict"`
+	StartsAt          string `json:"starts_at,omitempty"`
+	EndsAt            string `json:"ends_at,omitempty"`
+	ApprovedOfferings int64  `json:"approved_offerings"`
+}
+
+type AvailabilityFilter struct {
+	Agency   string
+	Statuses []string
 }
 
 type QASummary struct {
@@ -1366,6 +1389,206 @@ limit $1
 		return nil, err
 	}
 	return schedules, nil
+}
+
+func (r *Repository) ListAvailability(ctx context.Context, limit int32, now time.Time, filter AvailabilityFilter) ([]AvailabilityView, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	rows, err := r.pool.Query(ctx, `
+with approved_counts as (
+	select notice_id, count(*)::bigint as approved_offerings
+	from offerings
+	where qa_status = 'approved'
+	group by notice_id
+)
+select
+	sn.id,
+	sn.agency,
+	sn.board_kind,
+	sn.seq,
+	sn.title,
+	ac.approved_offerings,
+	ns.starts_at,
+	ns.ends_at,
+	an.status
+from source_notices sn
+join approved_counts ac on ac.notice_id = sn.id
+left join notice_schedules ns
+	on ns.notice_id = sn.id
+	and ns.schedule_type = 'application'
+left join application_notices an
+	on an.notice_id = sn.id
+	and an.status in ('청약중', '접수예정')
+order by sn.agency, sn.seq, ns.starts_at nulls last, an.id
+`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	builders := make(map[int64]*availabilityViewBuilder)
+	for rows.Next() {
+		var noticeID int64
+		var approvedOfferings int64
+		var startsAt pgtype.Timestamptz
+		var endsAt pgtype.Timestamptz
+		var applicationStatus pgtype.Text
+		view := AvailabilityView{}
+		if err := rows.Scan(
+			&noticeID,
+			&view.Agency,
+			&view.BoardKind,
+			&view.Seq,
+			&view.Title,
+			&approvedOfferings,
+			&startsAt,
+			&endsAt,
+			&applicationStatus,
+		); err != nil {
+			return nil, err
+		}
+		builder := builders[noticeID]
+		if builder == nil {
+			view.NoticeID = noticeID
+			view.ApprovedOfferings = approvedOfferings
+			builder = &availabilityViewBuilder{
+				view:            view,
+				scheduleSeen:    map[string]bool{},
+				applicationSeen: map[string]bool{},
+			}
+			builders[noticeID] = builder
+		}
+		if startsAt.Valid && endsAt.Valid {
+			key := startsAt.Time.Format(time.RFC3339Nano) + "|" + endsAt.Time.Format(time.RFC3339Nano)
+			if !builder.scheduleSeen[key] {
+				builder.scheduleSeen[key] = true
+				builder.schedules = append(builder.schedules, availability.ScheduleEvidence{
+					StartsAt: startsAt.Time,
+					EndsAt:   endsAt.Time,
+				})
+			}
+		}
+		if applicationStatus.Valid && strings.TrimSpace(applicationStatus.String) != "" {
+			status := strings.TrimSpace(applicationStatus.String)
+			if !builder.applicationSeen[status] {
+				builder.applicationSeen[status] = true
+				builder.applications = append(builder.applications, availability.ApplicationEvidence{Status: status})
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	items := make([]AvailabilityView, 0, len(builders))
+	for _, builder := range builders {
+		decision := availability.Resolve(now, builder.schedules, builder.applications)
+		view := builder.view
+		view.Status = decision.Status
+		view.Source = decision.Source
+		view.ScheduleStatus = decision.ScheduleStatus
+		view.ApplicationStatus = decision.ApplicationStatus
+		view.Conflict = decision.Conflict
+		start, end := representativeSchedule(now, decision.ScheduleStatus, builder.schedules)
+		view.StartsAt = localTimeString(start)
+		view.EndsAt = localTimeString(end)
+		if !matchesAvailabilityFilter(view, filter) {
+			continue
+		}
+		items = append(items, view)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		leftRank := availabilityStatusRank(items[i].Status)
+		rightRank := availabilityStatusRank(items[j].Status)
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		if items[i].StartsAt != items[j].StartsAt {
+			if items[i].StartsAt == "" {
+				return false
+			}
+			if items[j].StartsAt == "" {
+				return true
+			}
+			return items[i].StartsAt < items[j].StartsAt
+		}
+		if items[i].Agency != items[j].Agency {
+			return items[i].Agency < items[j].Agency
+		}
+		return items[i].Seq < items[j].Seq
+	})
+	if int32(len(items)) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
+func matchesAvailabilityFilter(view AvailabilityView, filter AvailabilityFilter) bool {
+	if strings.TrimSpace(filter.Agency) != "" && view.Agency != strings.TrimSpace(filter.Agency) {
+		return false
+	}
+	if len(filter.Statuses) == 0 {
+		return true
+	}
+	for _, status := range filter.Statuses {
+		if view.Status == strings.TrimSpace(status) {
+			return true
+		}
+	}
+	return false
+}
+
+type availabilityViewBuilder struct {
+	view            AvailabilityView
+	schedules       []availability.ScheduleEvidence
+	applications    []availability.ApplicationEvidence
+	scheduleSeen    map[string]bool
+	applicationSeen map[string]bool
+}
+
+func representativeSchedule(now time.Time, status string, schedules []availability.ScheduleEvidence) (time.Time, time.Time) {
+	var chosen availability.ScheduleEvidence
+	for _, schedule := range schedules {
+		if schedule.StartsAt.IsZero() || schedule.EndsAt.IsZero() {
+			continue
+		}
+		switch status {
+		case availability.StatusOpen:
+			if !now.Before(schedule.StartsAt) && !now.After(schedule.EndsAt) {
+				return schedule.StartsAt, schedule.EndsAt
+			}
+		case availability.StatusPending:
+			if now.Before(schedule.StartsAt) && (chosen.StartsAt.IsZero() || schedule.StartsAt.Before(chosen.StartsAt)) {
+				chosen = schedule
+			}
+		case availability.StatusClosed:
+			if now.After(schedule.EndsAt) && (chosen.EndsAt.IsZero() || schedule.EndsAt.After(chosen.EndsAt)) {
+				chosen = schedule
+			}
+		}
+	}
+	return chosen.StartsAt, chosen.EndsAt
+}
+
+func availabilityStatusRank(status string) int {
+	switch status {
+	case availability.StatusOpen:
+		return 0
+	case availability.StatusPending:
+		return 1
+	case availability.StatusClosed:
+		return 2
+	default:
+		return 3
+	}
+}
+
+func localTimeString(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.In(time.Local).Format(time.RFC3339)
 }
 
 func int8Value(value int64) pgtype.Int8 {

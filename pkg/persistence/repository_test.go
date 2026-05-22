@@ -143,6 +143,76 @@ func TestRepository_ApplicationNotice_테스트별클린DB에서UpsertLink한다
 	}
 }
 
+func TestRepository_ListAvailability_인터넷청약상태와PDF일정을통합한다(t *testing.T) {
+	repo := openCleanTestRepository(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 22, 12, 0, 0, 0, time.Local)
+
+	openNoticeID := insertSourceNoticeFixture(t, repo, "303584", "2026년 전세임대형 든든주택 입주자 모집공고(2026.04.29.)")
+	insertApprovedOfferingFixture(t, repo, openNoticeID, "object://sh/303584#offering=1")
+	count := 500
+	appID, err := repo.UpsertApplicationNotice(ctx, ApplicationNoticeInput{
+		Agency:            "SH",
+		Source:            "sh_app_user",
+		SupplyType:        "12",
+		RecruitNoticeCode: "202620092",
+		RecruitType:       "32",
+		Title:             "2026년 전세임대형 든든주택 입주자 모집 공고(2026.4.29.)",
+		Status:            "청약중",
+		SupplyCount:       &count,
+		PostedAt:          time.Date(2026, 4, 29, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("UpsertApplicationNotice() error = %v", err)
+	}
+	if err := repo.LinkApplicationNoticeToSourceNotice(ctx, appID, openNoticeID); err != nil {
+		t.Fatalf("LinkApplicationNoticeToSourceNotice() error = %v", err)
+	}
+
+	pendingNoticeID := insertSourceNoticeFixture(t, repo, "304106", "2026년 1차 희망하우징(공공기숙사) 잔여세대 입주자 모집공고")
+	insertApprovedOfferingFixture(t, repo, pendingNoticeID, "object://sh/304106#offering=1")
+	scheduleArtifactID := insertMyHomeArtifactFixture(t, repo, "object://sh/304106#artifact=schedule")
+	if _, err := repo.UpsertNoticeSchedule(ctx, normalize.NoticeScheduleCandidate{
+		NoticeID:         pendingNoticeID,
+		SourceArtifactID: scheduleArtifactID,
+		ScheduleType:     "application",
+		Label:            "신청접수 ( 인터넷 )",
+		StartsAt:         time.Date(2026, 5, 26, 10, 0, 0, 0, time.Local),
+		EndsAt:           time.Date(2026, 5, 28, 17, 0, 0, 0, time.Local),
+		DateText:         "2026.5.26 10:00 ~ 5.28 17:00",
+		Channel:          "source_text",
+		SourceText:       "2026.5.26 10:00 ~ 5.28 17:00",
+		SourceSpan:       "object://sh/304106#schedule=application",
+		Confidence:       0.82,
+	}); err != nil {
+		t.Fatalf("UpsertNoticeSchedule() error = %v", err)
+	}
+
+	availability, err := repo.ListAvailability(ctx, 10, now, AvailabilityFilter{})
+	if err != nil {
+		t.Fatalf("ListAvailability() error = %v", err)
+	}
+
+	bySeq := availabilityBySeq(availability)
+	if bySeq["303584"].Status != "open" || bySeq["303584"].Source != "application_notice" {
+		t.Fatalf("303584 availability = %+v", bySeq["303584"])
+	}
+	if bySeq["304106"].Status != "pending" || bySeq["304106"].Source != "schedule" {
+		t.Fatalf("304106 availability = %+v", bySeq["304106"])
+	}
+	if bySeq["304106"].StartsAt != "2026-05-26T10:00:00+09:00" || bySeq["304106"].EndsAt != "2026-05-28T17:00:00+09:00" {
+		t.Fatalf("304106 schedule bounds = %s ~ %s", bySeq["304106"].StartsAt, bySeq["304106"].EndsAt)
+	}
+
+	pendingOnly, err := repo.ListAvailability(ctx, 10, now, AvailabilityFilter{Agency: "SH", Statuses: []string{"pending"}})
+	if err != nil {
+		t.Fatalf("ListAvailability(pending filter) error = %v", err)
+	}
+	if len(pendingOnly) != 1 || pendingOnly[0].Seq != "304106" || pendingOnly[0].Status != "pending" {
+		t.Fatalf("pendingOnly = %+v", pendingOnly)
+	}
+}
+
 func TestRepository_ExistingNoticeCandidates_저장된모집공고를Reconcile후보로반환한다(t *testing.T) {
 	repo := openCleanTestRepository(t)
 	ctx := context.Background()
@@ -419,6 +489,37 @@ returning id
 		t.Fatalf("insert source notice fixture: %v", err)
 	}
 	return id
+}
+
+func insertApprovedOfferingFixture(t *testing.T, repo *Repository, noticeID int64, sourceSpan string) int64 {
+	t.Helper()
+	var id int64
+	err := repo.pool.QueryRow(context.Background(), `
+insert into offerings (
+	notice_id,
+	agency,
+	source,
+	application_unit_label,
+	housing_name,
+	source_span,
+	confidence,
+	qa_status
+)
+values ($1, 'SH', 'test', '테스트 공급항목', '테스트 주택', $2, 1, 'approved')
+returning id
+`, noticeID, sourceSpan).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert approved offering fixture: %v", err)
+	}
+	return id
+}
+
+func availabilityBySeq(items []AvailabilityView) map[string]AvailabilityView {
+	out := make(map[string]AvailabilityView, len(items))
+	for _, item := range items {
+		out[item.Seq] = item
+	}
+	return out
 }
 
 func insertMyHomeArtifactFixture(t *testing.T, repo *Repository, sourceSpan string) int64 {

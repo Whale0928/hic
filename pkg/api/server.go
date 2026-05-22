@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"hic/pkg/extraction"
@@ -17,6 +18,7 @@ type Repository interface {
 	ListOfferings(ctx context.Context, limit int32, qaStatus string) ([]persistence.OfferingView, error)
 	ListSchedules(ctx context.Context, limit int32) ([]persistence.ScheduleView, error)
 	ListSourceNotices(ctx context.Context, limit int32) ([]persistence.SourceNoticeView, error)
+	ListAvailability(ctx context.Context, limit int32, now time.Time, filter persistence.AvailabilityFilter) ([]persistence.AvailabilityView, error)
 }
 
 type Server struct {
@@ -36,6 +38,7 @@ func NewWithDisplay(repo Repository, displayDir string) *echo.Echo {
 	e.GET("/offerings", server.listOfferings)
 	e.GET("/schedules", server.listSchedules)
 	e.GET("/notices", server.listNotices)
+	e.GET("/availability", server.listAvailability)
 	e.GET("/reports/pdf-offerings", server.pdfOfferingsReport)
 	if displayDir != "" {
 		e.Static("/display", displayDir)
@@ -69,6 +72,14 @@ func (s Server) listSchedules(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, schedules)
+}
+
+func (s Server) listAvailability(c echo.Context) error {
+	items, err := s.repo.ListAvailability(c.Request().Context(), parseLimit(c.QueryParam("limit"), 200), parseNow(c.QueryParam("now")), availabilityFilter(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, items)
 }
 
 func (s Server) pdfOfferingsReport(c echo.Context) error {
@@ -181,6 +192,39 @@ func parseLimit(raw string, fallback int32) int32 {
 		return 1000
 	}
 	return int32(value)
+}
+
+func parseNow(raw string) time.Time {
+	if raw == "" {
+		return time.Now()
+	}
+	value, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Now()
+	}
+	return value
+}
+
+func availabilityFilter(c echo.Context) persistence.AvailabilityFilter {
+	return persistence.AvailabilityFilter{
+		Agency:   strings.TrimSpace(c.QueryParam("agency")),
+		Statuses: splitQueryCSV(c.QueryParam("status")),
+	}
+}
+
+func splitQueryCSV(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func qaStatusParam(raw string) string {

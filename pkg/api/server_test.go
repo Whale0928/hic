@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"hic/pkg/persistence"
 )
@@ -31,6 +32,12 @@ func (fakeRepository) ListSourceNotices(ctx context.Context, limit int32) ([]per
 func (fakeRepository) ListSchedules(ctx context.Context, limit int32) ([]persistence.ScheduleView, error) {
 	return []persistence.ScheduleView{
 		{ID: 100, NoticeID: 10, ScheduleType: "application", Label: "신청접수", DateText: "20260605~20260609", SourceSpan: "myhome://rsdtRcritNtcList/20364/1#schedule=application"},
+	}, nil
+}
+
+func (fakeRepository) ListAvailability(ctx context.Context, limit int32, now time.Time, filter persistence.AvailabilityFilter) ([]persistence.AvailabilityView, error) {
+	return []persistence.AvailabilityView{
+		{NoticeID: 10, Agency: filter.Agency, Seq: "303584", Title: "든든주택", Status: "open", Source: "application_notice", ApprovedOfferings: 1},
 	}, nil
 }
 
@@ -107,6 +114,25 @@ func TestServer_Schedules_구조화일정을제공한다(t *testing.T) {
 	}
 	if len(schedules) != 1 || schedules[0].ScheduleType != "application" {
 		t.Fatalf("schedules = %+v", schedules)
+	}
+}
+
+func TestServer_Availability_신청가능상태를제공한다(t *testing.T) {
+	e := New(fakeRepository{})
+	req := httptest.NewRequest(http.MethodGet, "/availability?limit=1&agency=SH&status=open&now=2026-05-22T12:00:00%2B09:00", nil)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var availability []persistence.AvailabilityView
+	if err := json.Unmarshal(rec.Body.Bytes(), &availability); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(availability) != 1 || availability[0].Agency != "SH" || availability[0].Status != "open" || availability[0].Source != "application_notice" {
+		t.Fatalf("availability = %+v", availability)
 	}
 }
 
